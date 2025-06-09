@@ -188,7 +188,7 @@
 		oplus_fusion: oplus_fusion {
 			status = "okay";
 			use_sub_accgyro = <0>;
-			fusion_style = <0>; // 0:vendor fusion; 1:oppo fusion; 2:mix fusion
+			fusion_style = <2>; // 0:vendor fusion; 1:oppo fusion; 2:mix fusion
 		};
 		smart_prox: smart_prox {
 			status = "okay";

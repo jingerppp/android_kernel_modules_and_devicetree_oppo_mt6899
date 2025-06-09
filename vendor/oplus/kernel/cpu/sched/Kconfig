@@ -112,7 +112,7 @@ config OPLUS_FEATURE_CPU_JANKINFO
 config OPLUS_PROCS_LOAD_STATE
 	tristate "config oplus_procs_load_state"
 	depends on OPLUS_FEATURE_CPU_JANKINFO
-	default y
+	default n
 	help
 	  oplus power procs load
 

@@ -311,6 +311,7 @@ struct oplus_chg_vooc {
 	int slow_chg_batt_limit;
 	u16 ufcs_vid;
 	struct completion pdsvooc_check_ack;
+	struct completion icl_done_ack;
 #if IS_ENABLED(CONFIG_OPLUS_DYNAMIC_CONFIG_CHARGER)
 	struct oplus_cfg spec_debug_cfg;
 	struct oplus_cfg normal_debug_cfg;
@@ -1671,6 +1672,8 @@ static int oplus_vooc_get_real_wired_type(struct oplus_chg_vooc *chip)
 
 #define PDSVOOC_CHECK_WAIT_TIME_MS		350
 #define OPLUS_SVID	0x22d9
+#define BEFORE_VOOC_CURR_CHECK 200
+#define WAIT_CURR_STARUP 500
 static void oplus_vooc_switch_check_work(struct work_struct *work)
 {
 	struct delayed_work *dwork = to_delayed_work(work);
@@ -1682,6 +1685,7 @@ static void oplus_vooc_switch_check_work(struct work_struct *work)
 	static unsigned long fastchg_check_timeout;
 	unsigned long schedule_delay = 0;
 	int rc;
+	union mms_msg_data data = { 0 };
 
 	chg_info("vooc switch check\n");
 
@@ -1811,6 +1815,16 @@ static void oplus_vooc_switch_check_work(struct work_struct *work)
 				oplus_cpa_switch_end(chip->cpa_topic, CHG_PROTOCOL_VOOC);
 			}
 			return;
+		}
+	}
+
+	if (chip->switch_retry_count == 0 && oplus_wired_get_ibus() < BEFORE_VOOC_CURR_CHECK) {
+		rc = oplus_mms_get_item_data(chip->wired_topic, WIRED_ITEM_ICL_DONE_STATUS, &data, true);
+		if (rc == 0 && data.intval == 0) {
+			reinit_completion(&chip->icl_done_ack);
+			rc = wait_for_completion_timeout(&chip->icl_done_ack,
+							 msecs_to_jiffies(WAIT_CURR_STARUP));
+			chg_info("wait wired icl done over\n");
 		}
 	}
 
@@ -3520,6 +3534,10 @@ static void oplus_vooc_wired_subs_callback(struct mms_subscribe *subs,
 				oplus_chg_clear_abnormal_adapter_var(chip);
 				schedule_work(&chip->turn_off_work);
 			}
+			break;
+		case WIRED_ITEM_ICL_DONE_STATUS:
+			complete_all(&chip->icl_done_ack);
+			chg_info("accept icl done\n");
 			break;
 		default:
 			break;
@@ -6436,6 +6454,7 @@ static int oplus_vooc_probe(struct platform_device *pdev)
 		goto proc_init_err;
 
 	init_completion(&chip->pdsvooc_check_ack);
+	init_completion(&chip->icl_done_ack);
 	INIT_DELAYED_WORK(&chip->vooc_init_work, oplus_vooc_init_work);
 	INIT_DELAYED_WORK(&chip->vooc_switch_check_work,
 			  oplus_vooc_switch_check_work);

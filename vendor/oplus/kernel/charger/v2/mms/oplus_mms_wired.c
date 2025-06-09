@@ -173,6 +173,7 @@ struct oplus_mms_wired {
 	struct work_struct back_ui_soc_work;
 	struct work_struct otg_enable_pending_work;
 	struct work_struct pd_completed_handler_work;
+	struct work_struct icl_done_handler_work;
 
 	struct wakeup_source *usbtemp_wakelock;
 	struct adc_vol_temp_info *adc_vol_temp_info;
@@ -244,6 +245,7 @@ struct oplus_mms_wired {
 	struct oplus_lpd_spec_config lpd_spec;
 	int lpd_retry_count;
 	int lpd_info_status;
+	bool set_icl_done;
 };
 
 static struct oplus_mms_wired *g_mms_wired;
@@ -596,6 +598,12 @@ int oplus_wired_set_icl(int icl_ma, bool step)
 	else
 		chg_info("set icl to %d, step=%s\n", icl_ma,
 			 step ? "true" : "false");
+
+	if (chip->set_icl_done == false && chip->wired_present == true) {
+		/* first insert need to inform icl status */
+		schedule_work(&chip->icl_done_handler_work);
+		chip->set_icl_done = true;
+	}
 
 	return rc;
 }
@@ -3766,6 +3774,27 @@ static void oplus_wired_pd_completed_work(struct work_struct *work)
 	}
 }
 
+static void oplus_wired_icl_done_work(struct work_struct *work)
+{
+	struct oplus_mms_wired *chip =
+		container_of(work, struct oplus_mms_wired, icl_done_handler_work);
+	struct mms_msg *msg;
+	int rc;
+
+	msg = oplus_mms_alloc_msg(MSG_TYPE_ITEM, MSG_PRIO_HIGH,
+				  WIRED_ITEM_ICL_DONE_STATUS);
+	if (msg == NULL) {
+		chg_err("alloc msg error\n");
+		return;
+	}
+
+	rc = oplus_mms_publish_msg(chip->wired_topic, msg);
+	if (rc < 0) {
+		chg_err("publish icl done msg error, rc=%d\n", rc);
+		kfree(msg);
+	}
+}
+
 static void oplus_wired_vooc_subs_callback(struct mms_subscribe *subs,
 					   enum mms_msg_type type, u32 id, bool sync)
 {
@@ -4206,6 +4235,10 @@ static void oplus_mms_wired_plugin_handler_work(struct work_struct *work)
 		chip->bc12_completed = false;
 		chip->pd_completed = false;
 		chip->lpd_retry_count = 0;
+		chip->set_icl_done = false;
+		/* need inform when quick attach/unattach */
+		if (present != chip->wired_present)
+			schedule_work(&chip->icl_done_handler_work);
 		oplus_wired_clear_usb_status(chip, USB_LPD_DETECT);
 	}
 
@@ -5031,6 +5064,27 @@ static int oplus_mms_wired_update_pd_completed(struct oplus_mms *mms,
 	return 0;
 }
 
+static int oplus_mms_wired_update_icl_status(struct oplus_mms *mms,
+						 union mms_msg_data *data)
+{
+	struct oplus_mms_wired *chip;
+
+	if (mms == NULL) {
+		chg_err("mms is NULL");
+		return -EINVAL;
+	}
+
+	if (data == NULL) {
+		chg_err("data is NULL");
+		return -EINVAL;
+	}
+
+	chip = oplus_mms_get_drvdata(mms);
+	data->intval = chip->set_icl_done;
+
+	return 0;
+}
+
 void oplus_wired_check_bcc_curr_done(struct oplus_mms *topic)
 {
 	struct oplus_mms_wired *chip = g_mms_wired;
@@ -5569,6 +5623,16 @@ static struct mms_item oplus_mms_wired_item[] = {
 			.update = oplus_mms_wired_update_pd_completed,
 		}
 	},
+	{
+		.desc = {
+			.item_id = WIRED_ITEM_ICL_DONE_STATUS,
+			.str_data = false,
+			.up_thr_enable = false,
+			.down_thr_enable = false,
+			.dead_thr_enable = false,
+			.update = oplus_mms_wired_update_icl_status,
+		}
+	},
 };
 
 static const struct oplus_mms_desc oplus_mms_wired_desc = {
@@ -5958,9 +6022,11 @@ static int oplus_mms_wired_probe(struct platform_device *pdev)
 	INIT_WORK(&chip->otg_enable_pending_work, oplus_wired_otg_enable_pending_work);
 	INIT_WORK(&chip->wls_upgrading_work, oplus_wls_upgrading_work);
 	INIT_WORK(&chip->pd_completed_handler_work, oplus_wired_pd_completed_work);
+	INIT_WORK(&chip->icl_done_handler_work, oplus_wired_icl_done_work);
 
 	chip->dischg_flag = false;
 	chip->cpa_support = oplus_cpa_support();
+	chip->set_icl_done = false;
 
 	schedule_delayed_work(&chip->mms_wired_init_work, 0);
 

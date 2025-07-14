@@ -1,0 +1,16 @@
+﻿// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/*
+ * Copyright (C) 2022 MediaTek Inc.
+ */
+#include "k6899v1_64.dts"
+
+&low_battery_throttling {
+	thd-volts-h-2s = <
+			4500 4400 4139>;
+};
+
+&peak_power_budget {
+	battery0-path-rdc-t0 = <103>;
+};
+
+/*End of this file, DO NOT ADD ANYTHING HERE*/

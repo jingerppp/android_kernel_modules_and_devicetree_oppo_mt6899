@@ -1296,6 +1296,8 @@ static int oplus_ofp_set_panel_hbm(void *drm_crtc, bool hbm_en)
 int oplus_ofp_hbm_handle(void *drm_crtc, void *mtk_crtc_state, void *cmdq_pkt)
 {
 	uint64_t hbm_enable = 0;
+	unsigned int refresh_rate = 0;
+	struct mtk_drm_crtc *mtk_crtc = NULL;
 	struct drm_crtc *crtc = drm_crtc;
 	struct mtk_crtc_state *state = mtk_crtc_state;
 	struct cmdq_pkt *cmdq_handle = cmdq_pkt;
@@ -1317,6 +1319,13 @@ int oplus_ofp_hbm_handle(void *drm_crtc, void *mtk_crtc_state, void *cmdq_pkt)
 		return -EFAULT;
 	}
 
+	mtk_crtc = to_mtk_crtc(crtc);
+	if (!mtk_crtc) {
+		OFP_ERR("Invalid params\n");
+		return -EFAULT;
+	}
+	refresh_rate = drm_mode_vrefresh(&mtk_crtc->base.state->adjusted_mode);
+
 	OPLUS_OFP_TRACE_BEGIN("oplus_ofp_hbm_handle");
 
 	hbm_enable = state->prop_val[CRTC_PROP_HBM_ENABLE];
@@ -1328,7 +1337,15 @@ int oplus_ofp_hbm_handle(void *drm_crtc, void *mtk_crtc_state, void *cmdq_pkt)
 			|| (state->prop_val[CRTC_PROP_DOZE_ACTIVE] && (hbm_enable & OPLUS_OFP_PROPERTY_FINGERPRESS_LAYER)
 			&& oplus_display_brightness != 0)) {
 			OFP_DEBUG("set hbm on\n");
-			oplus_ofp_set_panel_hbm(crtc, true);
+			if (oplus_ofp_video_mode_30hz_aod_accelerate_is_enabled()) {
+				if (refresh_rate == 120)
+					oplus_ofp_set_panel_hbm(crtc, true);
+				else
+					OFP_INFO("refresh not 120fps\n");
+
+			} else {
+				oplus_ofp_set_panel_hbm(crtc, true);
+			}
 
 			if (!oplus_ofp_local_hbm_is_enabled()) {
 				/*bypass pq when enter hbm */

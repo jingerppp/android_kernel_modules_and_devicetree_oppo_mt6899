@@ -25,17 +25,6 @@ bool vip_enable;
 static int *tgid_vip_arr;
 int tgid_vip_status;
 
-#ifdef CONFIG_HMBIRD_SCHED
-static struct hmbird_ops *sa_hmbird_ops = NULL;
-
-void mtk_hmbird_sched_ops_init(void)
-{
-	if (HMBIRD_OGKI_VERSION == get_hmbird_version_type()) {
-		sa_hmbird_ops = get_hmbird_ops(this_rq());
-	}
-}
-#endif
-
 DEFINE_PER_CPU(struct vip_rq, vip_rq);
 inline unsigned int sum_num_vip_in_cpu(int cpu)
 {
@@ -1219,11 +1208,6 @@ void vip_replace_next_task_fair(void *unused, struct rq *rq, struct task_struct 
 	struct vip_task_struct *vts;
 	struct task_struct *vip;
 
-#ifdef CONFIG_HMBIRD_SCHED
-	if (sa_hmbird_ops && sa_hmbird_ops->scx_enable
-		&& sa_hmbird_ops->scx_enable())
-		return;
-#endif
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
 	android_rvh_replace_next_task_fair_handler(unused, rq, p, se, repick, simple, prev);
 	if (*repick)
@@ -1493,7 +1477,4 @@ void vip_init(void)
 	/* init vip related value to newly forked tasks */
 	register_vip_hooks();
 	vip_enable = sched_vip_enable_get();
-#ifdef CONFIG_HMBIRD_SCHED
-	mtk_hmbird_sched_ops_init();
-#endif
 }

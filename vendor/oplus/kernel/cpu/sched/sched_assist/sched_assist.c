@@ -191,6 +191,18 @@ int __nocfi detect_symbol(void)
 	return 0;
 }
 
+void enable_sched_assist(int step) {
+	static int ux_hooks = 0;
+	ux_hooks |= step;
+
+	if (OPLUS_UX_HOOK_MASK == ux_hooks) {
+		global_sched_assist_enabled |= FEATURE_COMMON;
+	#ifdef CONFIG_OPLUS_FEATURE_SCHED_SPREAD
+		global_sched_assist_enabled |= FEATURE_SPREAD;
+	#endif
+	}
+}
+EXPORT_SYMBOL_GPL(enable_sched_assist);
 
 static int __init oplus_sched_assist_init(void)
 {
@@ -200,10 +212,6 @@ static int __init oplus_sched_assist_init(void)
 	if (ret != 0)
 		return ret;
 
-	global_sched_assist_enabled |= FEATURE_COMMON;
-#ifdef CONFIG_OPLUS_FEATURE_SCHED_SPREAD
-	global_sched_assist_enabled |= FEATURE_SPREAD;
-#endif /* CONFIG_OPLUS_FEATURE_SCHED_SPREAD */
 
 	sched_assist_init_oplus_rq();
 	update_ux_sched_cputopo();
@@ -222,6 +230,10 @@ static int __init oplus_sched_assist_init(void)
 	if (_profile_event_register)
 		/* register a notifier to monitor task exit */
 		(*_profile_event_register)(PROFILE_TASK_EXIT, &process_exit_notifier_block);
+
+#ifdef CONFIG_OPLUS_SYSTEM_KERNEL_QCOM
+	enable_sched_assist(OPLUS_UX_HOOK_MASK);
+#endif
 
 	hmbird_sched_ops_init();
 

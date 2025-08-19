@@ -639,6 +639,9 @@
         thread_full_boost_task = <1>;
     };
     //#endif
+    ufshci: ufshci@112b0000 {
+        mediatek,ufs-vcc-always-on;
+    };
 };
 
 #include "mediatek/cust_mt6899_knightm_camera_v4l2.dtsi"

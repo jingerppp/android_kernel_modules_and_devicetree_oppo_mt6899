@@ -141,6 +141,7 @@
 			    cgroup.memory=nosocket,nokmem \
 			    disable_dma32=on \
 			    rcu_nocbs=all \
+                            erofs.reserved_pages=256 \
 			    nohugevmalloc \
 			    transparent_hugepage=never";
 			    mkp_panic="on";

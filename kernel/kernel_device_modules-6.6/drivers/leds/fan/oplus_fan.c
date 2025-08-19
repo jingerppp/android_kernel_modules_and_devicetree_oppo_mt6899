@@ -32,7 +32,11 @@
 #define MAX_LEVEL_DEFAULT 10
 #define DEVICE_ID_HONGYING 0
 #define DEVICE_ID_TAIDA 1
+#define FAN_STATUS_PERIOD_DEFAULT 60000
 
+static int dbg_rpm = -1;
+module_param(dbg_rpm, int, 0644);
+MODULE_PARM_DESC(dbg_rpm, "oplus debug fan rpm");
 #ifdef CONFIG_OPLUS_FAN_MTK
 #define FAN_DEFAULT_PWM_NUM	    1
 #define FAN_DEFAULT_VDD_MIN_VOL    2950000
@@ -56,10 +60,17 @@ struct oplus_fan_tach {
 #endif
 };
 
+struct fan_rpm_offset_config {
+	int temp;
+	u32 rpm_offset;
+};
+
 struct fan_hw_config {
 	int max_level;
 	int duty_config[MAX_LEVEL_DEFAULT];
+	struct fan_rpm_offset_config *rpm_offset_config;
 	int pulses_per_revolution;
+	int rpm_offset_count;
 };
 
 struct pwm_setting {
@@ -68,6 +79,31 @@ struct pwm_setting {
 	u32	duty;
 	bool	enabled;
 };
+
+struct fan_rpm_table {
+	u32	duty;
+	u32	rpm;
+};
+
+enum fan_status {
+	FAN_STATUS_NORMAL = 0,
+	FAN_STATUS_BLOCKED = 1,
+	FAN_STATUS_DAMAGED = 2,
+};
+
+static const char *const fan_state_names[] = {
+	[FAN_STATUS_NORMAL] = "NORMAL",
+	[FAN_STATUS_BLOCKED] = "BLOCKED",
+	[FAN_STATUS_DAMAGED] = "DAMAGED",
+};
+
+static const char *fan_status_string(enum fan_status status)
+{
+	if (status < 0 || status >= ARRAY_SIZE(fan_state_names))
+		return "UNKNOWN";
+
+	return fan_state_names[status];
+}
 
 struct oplus_fan_chip {
 	struct device *dev;
@@ -83,9 +119,21 @@ struct oplus_fan_chip {
 	int reg_en_gpio;
 	bool regulator_enabled;
 	bool rpm_timer_enabled;
+	bool force_rpm_timer_enabled;
 	struct oplus_fan_tach tach;
 	ktime_t sample_start;
 	struct timer_list rpm_timer;
+	struct delayed_work fan_status_work;
+	struct delayed_work fan_retry_work;
+	int status_check_period;
+	bool force_disable_status_work;
+	enum fan_status status;
+	struct fan_rpm_table rpm_table[MAX_LEVEL_DEFAULT];
+	bool rpm_table_initialized;
+	bool fan_status_checking;
+	bool fan_state_retrying;
+	bool state_changed;
+	struct thermal_zone_device *shell_themal;
 #ifdef CONFIG_OPLUS_FAN_MTK
 	struct pwm_spec_config mtk_pwm_setting;
 #endif
@@ -95,6 +143,7 @@ static struct fan_hw_config default_hw_config = {
 	.max_level = MAX_LEVEL_DEFAULT,
 	.duty_config = {10, 20, 30, 40, 50, 60, 70, 80, 90, 100},
 	.pulses_per_revolution = DEFAULT_PULSES_PER_REVOLUTION,
+	.rpm_offset_config = NULL,
 };
 
 /* This handler assumes self resetting edge triggered interrupt. */
@@ -137,6 +186,11 @@ static void sample_timer(struct timer_list *t)
 	dev_err(chip->dev, "sample_timer:delta=%u ms, duty=%u, pulses=%d, rpm=%u\n",
 			delta, chip->pwm_setting.duty, pulses, tach->rpm);
 
+	if (dbg_rpm >= 0) {
+		tach->rpm = dbg_rpm;
+		dev_err(chip->dev, "dbg_rpm != 0, force rpm=%u\n", tach->rpm);
+	}
+
 	mod_timer(&chip->rpm_timer, jiffies + HZ);
 }
 
@@ -168,6 +222,16 @@ static void oplus_fan_sample_timer_enable(struct oplus_fan_chip *chip,
 	if (!chip)
 		return;
 
+	if (chip->fan_status_checking) {
+		dev_err(chip->dev, "fan_status_work checking, don't allow change sample_timer state\n");
+		return;
+	}
+
+	if (chip->force_rpm_timer_enabled && !enabled) {
+		dev_err(chip->dev, "force_rpm_timer_enabled, don't disable sample_timer\n");
+		return;
+	}
+
 	chip->rpm_timer_enabled = enabled;
 	dev_err(chip->dev, "sample_timer enable = %d\n", enabled);
 
@@ -182,14 +246,194 @@ static void oplus_fan_sample_timer_enable(struct oplus_fan_chip *chip,
 	}
 }
 
+#define DEFAULT_SHELL_TEMP 25
+static int oplus_fan_get_shell_temp(struct oplus_fan_chip *chip)
+{
+	int shell_temp;
+	struct thermal_zone_device *tmp_shell_themal = NULL;
+	int rc;
+
+	if (chip->shell_themal == NULL) {
+		tmp_shell_themal = thermal_zone_get_zone_by_name("shell_back");
+		if (IS_ERR(tmp_shell_themal)) {
+			dev_err(chip->dev, "Can't get shell_back\n");
+			tmp_shell_themal = NULL;
+		}
+		chip->shell_themal = tmp_shell_themal;
+	}
+
+	if (IS_ERR_OR_NULL(chip->shell_themal)) {
+		shell_temp = DEFAULT_SHELL_TEMP;
+	} else {
+		rc = thermal_zone_get_temp(chip->shell_themal, &shell_temp);
+		if (rc) {
+			dev_err(chip->dev, "thermal_zone_get_temp get error");
+			shell_temp = DEFAULT_SHELL_TEMP;
+		} else {
+			shell_temp = shell_temp / 100;
+		}
+	}
+
+	dev_err(chip->dev, "shell_back temp = %d", shell_temp);
+
+	return shell_temp;
+}
+
+static u32 oplus_fan_get_target_rpm(struct oplus_fan_chip *chip, u32 duty)
+{
+	int i;
+
+	for (i = 0; i < MAX_LEVEL_DEFAULT; i++) {
+		if (duty == chip->rpm_table[i].duty)
+			return chip->rpm_table[i].rpm;
+	}
+
+	return 0;
+}
+
+#define FAN_RPM_OFFSET_DEFAULT 1000
+static u32 oplus_fan_get_rpm_offset(struct oplus_fan_chip *chip, int temp)
+{
+	struct fan_hw_config *config = &chip->hw_config[chip->device_id];
+	int i;
+
+	if (config->rpm_offset_count <= 0)
+		return FAN_RPM_OFFSET_DEFAULT;
+
+	for (i = 0; i < config->rpm_offset_count; i++) {
+		if (temp < config->rpm_offset_config[i].temp)
+			return config->rpm_offset_config[i].rpm_offset;
+	}
+
+	return FAN_RPM_OFFSET_DEFAULT;
+}
+
+static bool oplus_fan_check_duty_support(struct oplus_fan_chip *chip, u32 duty)
+{
+	int i;
+
+	if (duty == 0)
+		return false;
+
+	for (i = 0; i < MAX_LEVEL_DEFAULT; i++) {
+		if (duty == chip->rpm_table[i].duty)
+			return true;
+	}
+
+	return false;
+}
+
+static bool oplus_fan_check_status_work_needed(struct oplus_fan_chip *chip)
+{
+	if (!chip->rpm_table_initialized) {
+		dev_err(chip->dev, "rpm_table is not initialized\n");
+		return false;
+	}
+
+	if (chip->force_disable_status_work) {
+		dev_err(chip->dev, "force disabled\n");
+		return false;
+	}
+
+	if (!chip->regulator_enabled || !chip->pwm_setting.enabled) {
+		dev_err(chip->dev, "fan state is disabled\n");
+		return false;
+	}
+
+	return true;
+}
+
+#define DAMAGED_RPM_THRESHOLD 100
+static void oplus_fan_status_work(struct work_struct *work)
+{
+	struct oplus_fan_chip *chip = container_of(work, struct oplus_fan_chip,
+			fan_status_work.work);
+	char *normal_strs[2] = { "FAN_STATE=NORMAL", NULL };
+	char *blocked_strs[2] = { "FAN_STATE=BLOCKED", NULL };
+	char *damaged_strs[2] = { "FAN_STATE=DAMAGED", NULL };
+	u32 current_duty;
+	u32 current_rpm;
+	u32 target_rpm;
+	u32 rpm_offset;
+	int shell_temp;
+	bool check_block_status;
+
+	if (!oplus_fan_check_status_work_needed(chip)) {
+		dev_err(chip->dev, "fan_status_work:don't need check, return\n");
+		return;
+	}
+
+	current_duty = chip->pwm_setting.duty;
+	oplus_fan_sample_timer_enable(chip, true);
+	chip->fan_status_checking = true;
+	msleep(1200);
+	chip->fan_status_checking = false;
+	oplus_fan_sample_timer_enable(chip, false);
+
+	if (!chip->regulator_enabled || !chip->pwm_setting.enabled) {
+		dev_err(chip->dev, "fan_status_work: fan state changed, return\n");
+		return;
+	}
+
+	if (current_duty != chip->pwm_setting.duty) {
+		dev_err(chip->dev, "fan_status_work:duty changed, skip this check\n");
+		goto next_check;
+	}
+
+	current_rpm = chip->tach.rpm;
+
+	check_block_status = oplus_fan_check_duty_support(chip, chip->pwm_setting.duty);
+	if (check_block_status) {
+		target_rpm = oplus_fan_get_target_rpm(chip, current_duty);
+		if (target_rpm == 0) {
+			dev_err(chip->dev, "fan_status_work:target_rpm = 0, return\n");
+			return;
+		}
+	} else {
+		target_rpm = 0;
+		dev_err(chip->dev, "duty=%d not support in rpm_table\n", chip->pwm_setting.duty);
+	}
+
+	shell_temp = oplus_fan_get_shell_temp(chip);
+	rpm_offset = oplus_fan_get_rpm_offset(chip, shell_temp);
+
+	dev_err(chip->dev, "fan_status_work: rpm=%u, level=%d, duty=%u target_rpm=%u, rpm_offset=%u\n",
+			current_rpm, chip->level, current_duty, target_rpm, rpm_offset);
+
+	if (check_block_status && current_rpm > target_rpm + rpm_offset) {
+		chip->status = FAN_STATUS_BLOCKED;
+		if (kobject_uevent_env(&chip->cdev.dev->kobj, KOBJ_CHANGE, blocked_strs))
+			dev_err(chip->dev, "Failed to send fan status uevent\n");
+		else
+			dev_err(chip->dev, "sent uevent %s\n", blocked_strs[0]);
+	} else if (current_rpm < DAMAGED_RPM_THRESHOLD) {
+		chip->status = FAN_STATUS_DAMAGED;
+		if (kobject_uevent_env(&chip->cdev.dev->kobj, KOBJ_CHANGE, damaged_strs))
+			dev_err(chip->dev, "Failed to send fan status uevent\n");
+		else
+			dev_err(chip->dev, "sent uevent %s\n", damaged_strs[0]);
+	} else {
+		chip->status = FAN_STATUS_NORMAL;
+		if (kobject_uevent_env(&chip->cdev.dev->kobj, KOBJ_CHANGE, normal_strs))
+			dev_err(chip->dev, "Failed to send fan status uevent\n");
+		else
+			dev_err(chip->dev, "sent uevent %s\n", normal_strs[0]);
+	}
+
+next_check:
+	schedule_delayed_work(&chip->fan_status_work, msecs_to_jiffies(chip->status_check_period));
+}
+
 static int oplus_fan_parse_hw_config(struct oplus_fan_chip *chip)
 {
 	struct device_node *np = chip->dev->of_node;
 	struct device_node *temp;
 	struct fan_hw_config *config;
+	int buf[64] = {0};
 	int ret;
 	int count;
 	int i = 0;
+	int j;
 
 	count = of_get_child_count(np);
 	if (count < 1) {
@@ -203,6 +447,8 @@ static int oplus_fan_parse_hw_config(struct oplus_fan_chip *chip)
 	if (!chip->hw_config) {
 		dev_err(chip->dev, "failed to kcalloc memory\n");
 		goto parse_err;
+	} else {
+		memset(chip->hw_config, 0, count * sizeof(struct fan_hw_config));
 	}
 
 	for_each_child_of_node(np, temp) {
@@ -226,6 +472,34 @@ static int oplus_fan_parse_hw_config(struct oplus_fan_chip *chip)
 			dev_err(chip->dev, "failed to get duty-config count = %d\n", count);
 			goto parse_err;
 		}
+
+		count = of_property_count_elems_of_size(temp, "rpm-offset-config", sizeof(int));
+		if (count > 0 && count % 2 == 0) {
+			ret = of_property_read_u32_array(temp, "rpm-offset-config", (u32 *)buf, count);
+			if (ret) {
+				dev_err(chip->dev, "failed to get rpm-offset-config ret = %d\n", ret);
+				goto parse_err;
+			}
+			config->rpm_offset_count = count / 2;
+			config->rpm_offset_config = devm_kcalloc(chip->dev,
+					config->rpm_offset_count, sizeof(struct fan_rpm_offset_config), GFP_KERNEL);
+			if (!config->rpm_offset_config) {
+				dev_err(chip->dev, "fail to alloc rpm_offset_config memory\n");
+				goto parse_err;
+			}
+
+			for (j = 0; j < config->rpm_offset_count; j++) {
+				config->rpm_offset_config[j].temp = buf[j * 2 + 0];
+				config->rpm_offset_config[j].rpm_offset = buf[j * 2 + 1];
+				dev_err(chip->dev, "rpm_offset_config[%d]:temp=%d, rpm_offset=%u\n", j,
+						config->rpm_offset_config[j].temp,
+						config->rpm_offset_config[j].rpm_offset);
+			}
+		} else {
+			dev_err(chip->dev, "failed to get rpm-offset-config count = %d\n", count);
+			goto parse_err;
+		}
+
 		dev_err(chip->dev, "parse config[%d] pulses_per_revolution = %d\n", i, config->pulses_per_revolution);
 		dev_err(chip->dev, "duty_config = %d,%d,%d,%d,%d, %d,%d,%d,%d,%d\n",
 				config->duty_config[0], config->duty_config[1], config->duty_config[2],
@@ -375,11 +649,12 @@ static int mtk_oplus_fan_pwm_start(struct oplus_fan_chip *chip)
 		chip->mtk_pwm_setting.PWM_MODE_OLD_REGS.DATA_WIDTH * chip->pwm_setting.duty /
 		100;
 
-	ret = pwm_set_spec_config(&chip->mtk_pwm_setting);
-	if (ret) {
-		dev_err(chip->dev, "Fail to pwm_set_spec_config ret = %d\n", ret);
+	if (chip->pwm_setting.enabled) {
+		ret = pwm_set_spec_config(&chip->mtk_pwm_setting);
+		if (ret) {
+			dev_err(chip->dev, "Fail to pwm_set_spec_config ret = %d\n", ret);
+		}
 	}
-
 	dev_err(chip->dev, "mtk_oplus_fan_pwm_start  PWM:enabled=%d, duty=%u", chip->pwm_setting.enabled, chip->pwm_setting.duty);
 
 	mutex_unlock(&chip->lock);
@@ -475,18 +750,26 @@ static void oplus_fan_enable(struct oplus_fan_chip *chip, bool enabled)
 	if (!chip)
 		return;
 
+	chip->state_changed = false;
+
 	if (enabled) {
 		oplus_fan_regulator_set(chip, true);
 		msleep(100);
 		chip->pwm_setting.enabled = true;
 		oplus_fan_set_pwm(chip);
 		oplus_fan_sample_timer_enable(chip, true);
+		cancel_delayed_work_sync(&chip->fan_status_work);
+		if (chip->fan_state_retrying)
+			schedule_delayed_work(&chip->fan_retry_work, msecs_to_jiffies(200));
+		else
+			schedule_delayed_work(&chip->fan_status_work, msecs_to_jiffies(2000));
 	} else {
 		chip->pwm_setting.enabled = false;
 		oplus_fan_set_pwm(chip);
 		msleep(100);
 		oplus_fan_regulator_set(chip, false);
 		oplus_fan_sample_timer_enable(chip, false);
+		cancel_delayed_work_sync(&chip->fan_status_work);
 	}
 
 	return;
@@ -500,23 +783,87 @@ static void mtk_oplus_fan_enable(struct oplus_fan_chip *chip, bool enabled)
 	if (enabled == chip->pwm_setting.enabled)
 		return;
 
+	chip->state_changed = false;
+
 	if (enabled) {
 		oplus_fan_regulator_set(chip, true);
 		msleep(100);
 		chip->pwm_setting.enabled = true;
 		mtk_oplus_fan_pwm_start(chip);
 		oplus_fan_sample_timer_enable(chip, true);
+		cancel_delayed_work_sync(&chip->fan_status_work);
+		if (chip->fan_state_retrying)
+			schedule_delayed_work(&chip->fan_retry_work, msecs_to_jiffies(200));
+		else
+			schedule_delayed_work(&chip->fan_status_work, msecs_to_jiffies(2000));
 	} else {
 		chip->pwm_setting.enabled = false;
 		mtk_oplus_fan_pwm_stop(chip);
 		msleep(100);
 		oplus_fan_regulator_set(chip, false);
 		oplus_fan_sample_timer_enable(chip, false);
+		cancel_delayed_work_sync(&chip->fan_status_work);
 	}
 
 	return;
 }
 #endif
+
+#define DEFAULT_RETRY_COUNT 3
+static void oplus_fan_retry_work(struct work_struct *work)
+{
+	struct oplus_fan_chip *chip = container_of(work, struct oplus_fan_chip,
+			fan_retry_work.work);
+	int i;
+	int count = 0;
+
+	for (i = 0; i < DEFAULT_RETRY_COUNT; i++) {
+		if (chip->state_changed) {
+			dev_err(chip->dev, "fan state_changed\n");
+			break;
+		}
+
+		if (!chip->regulator_enabled || !chip->pwm_setting.enabled) {
+			dev_err(chip->dev, "fan state is disabled\n");
+			break;
+		}
+
+		oplus_fan_sample_timer_enable(chip, true);
+		chip->fan_status_checking = true;
+		msleep(1200);
+		chip->fan_status_checking = false;
+		oplus_fan_sample_timer_enable(chip, false);
+
+		if (!chip->regulator_enabled || !chip->pwm_setting.enabled) {
+			dev_err(chip->dev, "fan state is disabled\n");
+			break;
+		}
+
+		if (chip->tach.rpm < DAMAGED_RPM_THRESHOLD) {
+			count++;
+		} else {
+			break;
+		}
+	}
+
+	chip->fan_state_retrying = false;
+
+	if (count == DEFAULT_RETRY_COUNT) {
+		dev_err(chip->dev, "fan status abnormal, retry fan enable\n");
+#ifndef CONFIG_OPLUS_FAN_MTK
+		oplus_fan_enable(chip, false);
+		msleep(20);
+		oplus_fan_enable(chip, true);
+#else
+		mtk_oplus_fan_enable(chip, false);
+		msleep(20);
+		mtk_oplus_fan_enable(chip, true);
+#endif
+	} else {
+		dev_err(chip->dev, "fan status normal\n");
+		schedule_delayed_work(&chip->fan_status_work, msecs_to_jiffies(2000));
+	}
+}
 
 static int oplus_fan_init(struct oplus_fan_chip *chip)
 {
@@ -527,6 +874,7 @@ static int oplus_fan_init(struct oplus_fan_chip *chip)
 		return -EINVAL;
 	}
 	chip->level = 0;
+	chip->status_check_period = FAN_STATUS_PERIOD_DEFAULT;
 	chip->pwm_setting.duty = MAX_DUTY;
 #ifndef CONFIG_OPLUS_FAN_MTK
 	chip->pwm_setting.period_ns = chip->pwm_setting.pre_period_ns;
@@ -590,6 +938,7 @@ static ssize_t speed_store(struct device *dev, struct device_attribute *attr,
 	if (speed > MAX_DUTY)
 		speed = MAX_DUTY;
 
+	chip->level = 0;
 	chip->pwm_setting.duty = speed;
 #ifndef CONFIG_OPLUS_FAN_MTK
 	oplus_fan_set_pwm(chip);
@@ -625,6 +974,9 @@ static ssize_t state_store(struct device *dev, struct device_attribute *attr,
 		return rc;
 	dev_err(chip->dev, "state_store = %d\n", enabled);
 
+	chip->state_changed = true;
+	cancel_delayed_work_sync(&chip->fan_retry_work);
+	chip->fan_state_retrying = enabled;
 #ifndef CONFIG_OPLUS_FAN_MTK
 	oplus_fan_enable(chip, enabled);
 #else
@@ -657,7 +1009,8 @@ static ssize_t rpm_store(struct device *dev, struct device_attribute *attr,
 	if (rc < 0)
 		return rc;
 
-	dev_err(chip->dev, "rpm_store enable = %d\n", enabled);
+	chip->force_rpm_timer_enabled = enabled;
+	dev_err(chip->dev, "rpm_store force_rpm_timer_enabled = %d\n", enabled);
 	oplus_fan_sample_timer_enable(chip, enabled);
 
 	return count;
@@ -754,12 +1107,156 @@ static ssize_t device_id_store(struct device *dev, struct device_attribute *attr
 }
 static DEVICE_ATTR_RW(device_id);
 
+static ssize_t status_show(struct device *dev, struct device_attribute *attr,
+					char *buf)
+{
+	struct led_classdev *fan_cdev = dev_get_drvdata(dev);
+	struct oplus_fan_chip *chip =
+			container_of(fan_cdev, struct oplus_fan_chip, cdev);
+
+	return scnprintf(buf, PAGE_SIZE, "%s\n", fan_status_string(chip->status));
+}
+static DEVICE_ATTR_RO(status);
+
+static ssize_t check_period_show(struct device *dev, struct device_attribute *attr,
+					char *buf)
+{
+	struct led_classdev *fan_cdev = dev_get_drvdata(dev);
+	struct oplus_fan_chip *chip =
+			container_of(fan_cdev, struct oplus_fan_chip, cdev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", chip->status_check_period);
+}
+
+static ssize_t check_period_store(struct device *dev, struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct led_classdev *fan_cdev = dev_get_drvdata(dev);
+	struct oplus_fan_chip *chip =
+			container_of(fan_cdev, struct oplus_fan_chip, cdev);
+	int rc;
+	u32 val;
+
+	rc = kstrtouint(buf, 0, &val);
+	if (rc < 0)
+		return rc;
+
+	dev_err(chip->dev, "set check_period = %u\n", val);
+
+	if (val == 0) {
+		chip->force_disable_status_work = true;
+		dev_err(chip->dev, "force disable check status work\n");
+	} else {
+		chip->status_check_period = val;
+		chip->force_disable_status_work = false;
+	}
+
+	return count;
+}
+static DEVICE_ATTR_RW(check_period);
+
+static ssize_t rpm_table_show(struct device *dev, struct device_attribute *attr,
+					char *buf)
+{
+	struct led_classdev *fan_cdev = dev_get_drvdata(dev);
+	struct oplus_fan_chip *chip =
+			container_of(fan_cdev, struct oplus_fan_chip, cdev);
+	int i;
+	int count = 0;
+
+	for (i = 0; i < MAX_LEVEL_DEFAULT; i++) {
+		count += scnprintf(buf + count, PAGE_SIZE, "%u,%u,",
+				chip->rpm_table[i].duty, chip->rpm_table[i].rpm);
+		dev_err(chip->dev, "rpm_table[%d]:%u,%u\n", i,
+				chip->rpm_table[i].duty, chip->rpm_table[i].rpm);
+	}
+
+	if (count > 0)
+		buf[count - 1] = '\n';
+
+	return count;
+}
+
+static ssize_t rpm_table_store(struct device *dev, struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct led_classdev *fan_cdev = dev_get_drvdata(dev);
+	struct oplus_fan_chip *chip =
+			container_of(fan_cdev, struct oplus_fan_chip, cdev);
+	char buffer[128] = {0};
+	u32 data[MAX_LEVEL_DEFAULT * 2] = {0};
+	char *str = buffer;
+	int val;
+	int cnt = 0;
+	int i;
+
+	if (count > sizeof(buffer) - 1) {
+		dev_err(chip->dev, "rpm_table data length out of range, count=%zu\n", count);
+		return -EFAULT;
+	}
+
+	memmove(buffer, buf, count);
+	dev_err(chip->dev, "rpm_table_store:%s\n", buffer);
+
+	while (*str != '\0' && *str != '\n') {
+		if (sscanf(str, "%d", &val) && val != 0) {
+			data[cnt++] = val;
+			str = strstr(str, ",");
+			if (!str)
+				break;
+			else
+				str++;
+			if (cnt == MAX_LEVEL_DEFAULT * 2)
+				break;
+		} else {
+			dev_err(chip->dev, "invalid rpm_table data, buffer=%s\n", buffer);
+			return -EFAULT;
+		}
+	}
+
+	if (cnt % 2) {
+		dev_err(chip->dev, "invalid rpm_table data count, buffer=%s\n", buffer);
+		return -EFAULT;
+	} else {
+		/* all duty param must be lower than MAX_DUTY */
+		for (i = 0; i < cnt; i += 2) {
+			if (data[i] > MAX_DUTY) {
+				dev_err(chip->dev, "duty param %u is invalid, buffer=%s\n", data[i], buffer);
+				return -EFAULT;
+			}
+		}
+
+		/* all rpm param can't be zero */
+		for (i = 1; i < cnt; i += 2) {
+			if (data[i] == 0) {
+				dev_err(chip->dev, "rpm param %u is invalid, buffer=%s\n", data[i], buffer);
+				return -EFAULT;
+			}
+		}
+
+		memset(chip->rpm_table, 0 , sizeof(chip->rpm_table));
+		dev_err(chip->dev, "rpm_table update count = %d\n", cnt);
+		for (i = 0; i < (cnt / 2); i++) {
+			chip->rpm_table[i].duty = data[i * 2];
+			chip->rpm_table[i].rpm = data[i * 2 + 1];
+			dev_err(chip->dev, "rpm_table[%d]:%u,%u\n", i, data[i * 2], data[i * 2 + 1]);
+		}
+		chip->rpm_table_initialized = true;
+	}
+
+	return count;
+}
+static DEVICE_ATTR_RW(rpm_table);
+
 static struct attribute *oplus_fan_attrs[] = {
 	&dev_attr_speed.attr,
 	&dev_attr_state.attr,
 	&dev_attr_rpm.attr,
 	&dev_attr_level.attr,
 	&dev_attr_device_id.attr,
+	&dev_attr_status.attr,
+	&dev_attr_check_period.attr,
+	&dev_attr_rpm_table.attr,
 	NULL
 };
 
@@ -854,10 +1351,12 @@ static int oplus_fan_probe(struct platform_device *pdev)
 			dev_err(chip->dev, "failed to kzalloc memory\n");
 			return ret;
 		}
-		memcpy(chip->hw_config, &default_hw_config, sizeof(struct fan_hw_config));
+		memmove(chip->hw_config, &default_hw_config, sizeof(struct fan_hw_config));
 	}
 	chip->device_id = DEVICE_ID_HONGYING;
 
+	INIT_DELAYED_WORK(&chip->fan_status_work, oplus_fan_status_work);
+	INIT_DELAYED_WORK(&chip->fan_retry_work, oplus_fan_retry_work);
 	timer_setup(&chip->rpm_timer, sample_timer, 0);
 	ret = devm_add_action_or_reset(dev, oplus_fan_cleanup, chip);
 	if (ret)

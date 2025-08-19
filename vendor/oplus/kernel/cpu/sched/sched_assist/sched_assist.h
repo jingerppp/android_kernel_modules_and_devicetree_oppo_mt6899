@@ -34,4 +34,10 @@
 #define UNREGISTER_TRACE_RVH(vender_hook, handler)
 #endif
 
+#define OPLUS_UX_HOOK_ENQUEUE (0x01)
+#define OPLUS_UX_HOOK_DEQUEUE (0x02)
+#define OPLUS_UX_HOOK_MASK    (OPLUS_UX_HOOK_ENQUEUE|OPLUS_UX_HOOK_DEQUEUE)
+
+void enable_sched_assist(int step);
+
 #endif /* _OPLUS_SCHED_ASSIST_H_ */

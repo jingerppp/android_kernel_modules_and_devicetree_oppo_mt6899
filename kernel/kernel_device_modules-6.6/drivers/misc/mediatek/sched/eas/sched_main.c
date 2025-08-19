@@ -27,6 +27,7 @@
 #include "eas_adpf.h"
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
 #include <../kernel/oplus_cpu/sched/sched_assist/sa_common.h>
+#include <../kernel/oplus_cpu/sched/sched_assist/sched_assist.h>
 #endif
 #if IS_ENABLED(CONFIG_MTK_GEARLESS_SUPPORT)
 #include "mtk_energy_model/v3/energy_model.h"
@@ -454,7 +455,9 @@ static void mtk_sched_trace_init(void)
 	ret = register_trace_android_rvh_dequeue_task(sched_queue_task_hook, &dequeue);
 	if (ret)
 		pr_info("register android_rvh_dequeue_task failed!\n");
-
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
+	enable_sched_assist(OPLUS_UX_HOOK_DEQUEUE);
+#endif
 	ret = register_trace_pelt_se_tp(sched_task_util_hook, NULL);
 	if (ret)
 		pr_info("register sched_task_util_hook failed!\n");
@@ -1194,7 +1197,9 @@ static int __init mtk_scheduler_init(void)
 	ret = register_trace_android_rvh_after_enqueue_task(mtk_hook_after_enqueue_task, NULL);
 	if (ret)
 		pr_info("register android_rvh_after_enqueue_task failed, returned %d\n", ret);
-
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
+	enable_sched_assist(OPLUS_UX_HOOK_ENQUEUE);
+#endif
 #if IS_ENABLED(CONFIG_MTK_SCHED_BIG_TASK_ROTATE)
 	ret = register_trace_android_rvh_new_task_stats(rotat_task_stats, NULL);
 	if (ret)

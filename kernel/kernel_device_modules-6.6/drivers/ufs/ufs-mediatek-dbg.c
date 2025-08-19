@@ -36,7 +36,7 @@
 #endif
 
 #define MAX_CMD_HIST_ENTRY_CNT (500)
-#define UFS_AEE_BUFFER_SIZE (100 * 1024)
+#define UFS_AEE_BUFFER_SIZE (128 * 1024)
 
 /*
  * Currently only global variables are used.
@@ -418,6 +418,30 @@ static void ufs_mtk_dbg_print_info(char **buff, unsigned long *size,
 			      UFS_EVT_HOST_RESET, "host_reset");
 	ufs_mtk_dbg_print_err_hist(buff, size, m,
 			      UFS_EVT_ABORT, "task_abort");
+}
+
+static void oplus_block_dbg_print_info(char **buff, unsigned long *size,
+			    struct seq_file *m)
+{
+	int i;
+	struct ufs_hba *hba = ufshba;
+	struct Scsi_Host *shost = hba->host;
+	struct blk_mq_tag_set *tag_set = &shost->tag_set;
+	if (tag_set->shared_tags) {
+		struct blk_mq_tags *tags = tag_set->shared_tags;
+		for (i = 0; i < tags->nr_tags; i++) {
+			struct request *rq = tags->static_rqs[i];
+
+			if (!rq)
+				continue;
+			/* Block Request Information */
+			SPREAD_PRINTF(buff, size, m,
+					"Request Infomation:t=%d,it=%d,dl=%d,s=%lld,atn=%lld,stn=%lld,istn=%lld\n", rq->tag, rq->internal_tag, rq->__data_len, rq->__sector, rq->alloc_time_ns, rq->start_time_ns, rq->io_start_time_ns);
+		}
+	} else {
+		SPREAD_PRINTF(buff, size, m,
+					"Request Information Obtain Fail!\n");
+	}
 }
 
 static int cmd_hist_get_entry(void)
@@ -2148,6 +2172,7 @@ void ufs_mtk_dbg_get_aee_buffer(unsigned long *vaddr, unsigned long *size)
 	ufs_mtk_dbg_print_info(&buff, &free_size, NULL);
 	ufs_mtk_dbg_print_cmd_hist(&buff, &free_size,
 				   MAX_CMD_HIST_ENTRY_CNT, NULL, false);
+	oplus_block_dbg_print_info(&buff, &free_size, NULL);
 
 	/* retrun start location */
 	*vaddr = (unsigned long)ufs_aee_buffer;
@@ -2212,6 +2237,8 @@ static int ufs_debug_proc_show(struct seq_file *m, void *v)
 	ufs_mtk_dbg_print_info(NULL, NULL, m);
 	ufs_mtk_dbg_print_cmd_hist(NULL, NULL, MAX_CMD_HIST_ENTRY_CNT,
 				   m, false);
+
+	oplus_block_dbg_print_info(NULL, NULL, m);
 	return 0;
 }
 

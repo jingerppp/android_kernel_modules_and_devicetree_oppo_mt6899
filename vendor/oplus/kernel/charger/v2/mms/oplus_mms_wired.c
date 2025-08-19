@@ -133,6 +133,8 @@ struct oplus_lpd_spec_config {
 	int sbu2_err;
 	int sbu1_diff_err;
 	int sbu2_diff_err;
+	int ignore_sbu1_err_data;
+	int ignore_sbu2_err_data;
 };
 
 struct oplus_mms_wired_abnormal_monitor {
@@ -1459,24 +1461,34 @@ int oplus_wired_update_lpd_info(struct oplus_mms_wired *chip, int flag, bool plu
 					      &chip->lpd_info.info.sbu2_max_volt);
 			break;
 		case OPLUS_LPD_SEL_SBU1_PULLUP_MASK:
-			if (plugin)
+			if (plugin) {
+				if (buf[i] == 0 && chip->lpd_spec.ignore_sbu1_err_data == 0) {
+					chip->lpd_spec.ignore_sbu1_err_data = 1;
+					break;
+				}
 				lpd_set_value(buf[i], &chip->lpd_info.info.plugin_sbu1_pullup_volt,
 					      &chip->lpd_info.info.sbu1_pullup_min_volt,
 					      &chip->lpd_info.info.sbu1_pullup_max_volt);
-			else
+			} else {
 				lpd_set_value(buf[i], &chip->lpd_info.info.plugout_sbu1_pullup_volt,
 					      &chip->lpd_info.info.sbu1_pullup_min_volt,
 					      &chip->lpd_info.info.sbu1_pullup_max_volt);
+			}
 			break;
 		case OPLUS_LPD_SEL_SBU2_PULLUP_MASK:
-			if (plugin)
+			if (plugin) {
+				if (buf[i] == 0 && chip->lpd_spec.ignore_sbu2_err_data == 0) {
+					chip->lpd_spec.ignore_sbu2_err_data = 1;
+					break;
+				}
 				lpd_set_value(buf[i], &chip->lpd_info.info.plugin_sbu2_pullup_volt,
 					      &chip->lpd_info.info.sbu2_pullup_min_volt,
 					      &chip->lpd_info.info.sbu2_pullup_max_volt);
-			else
+			} else {
 				lpd_set_value(buf[i], &chip->lpd_info.info.plugout_sbu2_pullup_volt,
 					      &chip->lpd_info.info.sbu2_pullup_min_volt,
 					      &chip->lpd_info.info.sbu2_pullup_max_volt);
+			}
 			break;
 		case OPLUS_LPD_SEL_CC1_MASK:
 			lpd_set_value(buf[i], &chip->lpd_info.info.cc1_volt,
@@ -1543,7 +1555,9 @@ static int oplus_wired_clear_sbu_info(struct oplus_mms_wired *chip)
 	chip->lpd_spec.sbu2_err = 0;
 	chip->lpd_spec.sbu1_diff_err = 0;
 	chip->lpd_spec.sbu2_diff_err = 0;
-	chg_err("clear");
+	chip->lpd_spec.ignore_sbu1_err_data = 0;
+	chip->lpd_spec.ignore_sbu2_err_data = 0;
+	chg_info("clear");
 	return 0;
 }
 
@@ -3782,15 +3796,30 @@ static void oplus_wired_lpd_info_update_work(struct work_struct *work)
 	} else {
 		oplus_wired_check_sbu_ovp_info(&chip->lpd_info);
 		oplus_wired_check_sbu_diff_info(&chip->lpd_info);
-		if (chip->lpd_spec.sbu1_err && chip->lpd_spec.sbu2_err &&
-		    chip->lpd_spec.sbu1_diff_err && chip->lpd_spec.sbu2_diff_err) {
-			chip->lpd_spec.lpd_info_status = OPLUS_LPD_ERROR;
-			rc = 1;
+#ifndef CONFIG_DISABLE_OPLUS_FUNCTION
+		if (get_eng_version() == FACTORY) {
+#else
+		if (1) {
+#endif
+			if (chip->lpd_spec.sbu1_err && chip->lpd_spec.sbu2_err) {
+				chip->lpd_spec.lpd_info_status = OPLUS_LPD_ERROR;
+				rc = 1;
+			}
+		} else {
+			if (chip->lpd_spec.sbu1_err && chip->lpd_spec.sbu2_err &&
+			    chip->lpd_spec.sbu1_diff_err && chip->lpd_spec.sbu2_diff_err) {
+				chip->lpd_spec.lpd_info_status = OPLUS_LPD_ERROR;
+				rc = 1;
+			}
 		}
 		if ((chip->lpd_spec.support_status == OPLUS_LPD_SUPPORT) &&
 		    ((chip->usb_status & USB_TEMP_HIGH) != USB_TEMP_HIGH) &&
 		    (rc != 0)) {
-			chg_err("check lpd info error!\n");
+#ifndef CONFIG_DISABLE_OPLUS_FUNCTION
+			chg_err("check lpd info error!eng_version:%d\n", get_eng_version());
+#else
+			chg_err("check lpd info error! DISABLE_OPLUS_FUNCTION!\n");
+#endif
 			oplus_wired_set_usb_status(chip, USB_LPD_DETECT);
 
 		}

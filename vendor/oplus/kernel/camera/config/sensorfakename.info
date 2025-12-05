@@ -1,0 +1,21 @@
+#project      hardware_name    fake_name     des
+ZhuqueC1_24071   OV50E40       zhuquec1main      main cam
+ZhuqueC1_24071   OV50D40       zhuquec1wide      ultra wide cam
+ZhuqueC1_24071   S5KJN5        zhuquec1tele      tele cam
+ZhuqueC1_24071   S5KJN5        zhuquec1front     front cam
+ZhuqueS1_24325   OV50E40       zhuques1main      main cam
+ZhuqueS1_24325   OV50D40       zhuques1wide      ultra wide cam
+ZhuqueS1_24325   S5KJN5        zhuques1tele      tele cam
+ZhuqueS1_24325   S5KJN5        zhuques1front     front cam
+Knightm_24069    OV50D40       knightmmain       main cam
+Knightm_24069    OV02B1B       knightmmono       mono cam
+Knightm_24069    IMX471        knightmfront      front cam
+
+// c1/s1/c2/s2 same
+whoopass   S5KHP5        whoopassc1main      main cam
+whoopass   S5KJN5        whoopassc1front     front cam
+whoopass   S5KJN5        whoopassc2front     front cam
+whoopass   OV50D40       whoopassc1wide2      wide cam   //temporary
+whoopass   GC50F6        whoopassc1wide     wide cam
+whoopass   GC50F6        whoopassc2wide     wide cam
+whoopass   S5KJN5        whoopassc1tele      tele cam

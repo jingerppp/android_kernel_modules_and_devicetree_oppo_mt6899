@@ -2739,7 +2739,9 @@ static int mtk_cam_watchdog_monitor_job(struct mtk_cam_watchdog *wd)
 
 	req_seq = job->req_seq;
 	job_ts = job->timestamp;
+#ifndef OPLUS_FEATURE_CAMERA_COMMON
 	is_dc = is_dc_mode(job);
+#endif
 	mtk_cam_job_put(job);
 
 	if (req_seq != wd->req_seq) {
@@ -2766,6 +2768,13 @@ static int mtk_cam_watchdog_monitor_job(struct mtk_cam_watchdog *wd)
 	/* job is not updated */
 	dev_info(ctx->cam->dev, "schedule work for job_dump: ctx-%d req %d\n",
 		 ctx->stream_id, wd->req_seq);
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	job = mtk_cam_ctrl_get_job(ctrl, cond_first_job, 0);
+	if (!job)
+		return 0;
+	is_dc = is_dc_mode(job);
+	mtk_cam_job_put(job);
+#endif
 	mtk_cam_watchdog_schedule_job_dump(wd,
 		is_dc ? MSG_DC_SKIP_FRAME : MSG_DEQUE_ERROR);
 	return -1;

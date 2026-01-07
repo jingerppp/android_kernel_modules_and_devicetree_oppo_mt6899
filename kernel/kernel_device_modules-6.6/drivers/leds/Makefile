@@ -24,3 +24,7 @@ ccflags-y += -DOPLUS_FEATURE_DISPLAY
 #end OPLUS_FEATURE_DISPLAY
 
 obj-$(CONFIG_OPLUS_FAN)		+= fan/
+obj-$(CONFIG_LEDS_AW2027)		+= aw2027/
+
+# aw22xxx led
+obj-$(CONFIG_LEDS_AW22XXX) += aw22xxx/

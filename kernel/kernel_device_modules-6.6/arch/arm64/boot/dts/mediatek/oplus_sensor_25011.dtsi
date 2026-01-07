@@ -189,6 +189,7 @@
 			gold_rear_spectrum_6k = <4188 7584 7384 1916 6526 2040 2956 2301 3929 3449 3102 3072 2813 1901>;
 			coef_index = <2>;
 			sup_f_cali = <1>;
+			fl_impact_range = <30>;  // ms
 		};
 		pick_up: pick_up {
 			status = "okay";

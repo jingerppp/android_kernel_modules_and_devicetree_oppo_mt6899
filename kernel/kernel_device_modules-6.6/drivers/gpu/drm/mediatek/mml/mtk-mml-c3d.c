@@ -92,7 +92,7 @@ static const u16 c3d_reg_table_mt6989[C3D_REG_MAX_COUNT] = {
 
 enum c3d_label_index {
 	C3D_REUSE_LABEL = 0,
-	C3D_POLLGPR_0 = C3D_LUT_NUM, // write array case C3D_LABEL_COUNT,
+	C3D_POLLGPR_0 = C3D_LUT_NUM + C3D_REG_NUM, // write array case C3D_LABEL_COUNT,
 	C3D_POLLGPR_1,
 	C3D_LABEL_TOTAL
 };
@@ -340,8 +340,9 @@ static s32 c3d_config_frame(struct mml_comp *comp, struct mml_task *task,
 	mml_pq_msg("%s:config c3d regs, count: %d", __func__, result->c3d_reg_cnt);
 	c3d_frm->config_success = true;
 	for (i = 0; i < result->c3d_reg_cnt; i++) {
-		cmdq_pkt_write(pkt, NULL, base_pa + regs[i].offset,
-			regs[i].value, regs[i].mask);
+		mml_write(comp->id, pkt, base_pa + regs[i].offset,
+			regs[i].value, regs[i].mask, reuse, cache,
+			&c3d_frm->labels[i + C3D_LUT_NUM]);
 		mml_pq_msg("[C3D][config][%x] = %#x mask(%#x)",
 			regs[i].offset, regs[i].value, regs[i].mask);
 	}
@@ -393,6 +394,7 @@ static s32 c3d_reconfig_frame(struct mml_comp *comp, struct mml_task *task,
 	struct c3d_frame_data *c3d_frm = c3d_frm_data(ccfg);
 	struct mml_task_reuse *reuse = &task->reuse[ccfg->pipe];
 	u32 *c3d_lut = NULL;
+	struct mml_pq_reg *regs = NULL;
 	u32 i=0;
 	s32 ret = 0;
 
@@ -419,10 +421,20 @@ static s32 c3d_reconfig_frame(struct mml_comp *comp, struct mml_task *task,
 		}
 	} while ((mml_pq_debug_mode & MML_PQ_SET_TEST) && result->is_set_test);
 
+	regs = result->c3d_regs;
 	c3d_lut = result->c3d_lut;
 	for (i = 0 ; i < C3D_LUT_NUM; i++)
 		mml_update(comp->id, reuse, c3d_frm->labels[i], c3d_lut[i]);
 
+
+	mml_pq_msg("%s:config c3d regs, count: %d", __func__, result->c3d_reg_cnt);
+	for (i = 0; i < result->c3d_reg_cnt; i++) {
+		mml_update(comp->id, reuse,
+			c3d_frm->labels[i + C3D_LUT_NUM],
+			regs[i].value);
+		mml_pq_msg("[C3D][config][%x] = %#x mask(%#x)",
+			regs[i].offset, regs[i].value, regs[i].mask);
+	}
 	mml_pq_msg("%s: success ", __func__);
 exit:
 	mml_pq_trace_ex_end();

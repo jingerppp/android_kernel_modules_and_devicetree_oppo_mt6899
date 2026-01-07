@@ -18,6 +18,9 @@
 #include "mtk_dsi.h"
 #include "oplus_dsi_display_config.h"
 #include "oplus_adfr.h"
+#ifdef OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT
+#include "oplus_display_onscreenfingerprint.h"
+#endif /* OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT */
 
 /* -------------------- macro -------------------- */
 /* config bit setting */
@@ -954,10 +957,17 @@ int oplus_adfr_send_auto_mode_dcs(struct drm_crtc *crtc, bool enable)
 
 	/* SDC's auto, fakeframe and minfps are available only after power on */
 	crtc_state = to_mtk_crtc_state(crtc->state);
+#ifdef OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT
+	if ((!mtk_crtc->enabled || crtc_state->prop_val[CRTC_PROP_DOZE_ACTIVE]) && !oplus_ofp_full_screen_aod_mode_is_enabled()) {
+		ADFR_WARN("ignore %s when power is off", __func__);
+		return -1;
+	}
+#else
 	if (!mtk_crtc->enabled || crtc_state->prop_val[CRTC_PROP_DOZE_ACTIVE]) {
 		ADFR_WARN("ignore %s when power is off", __func__);
 		return -1;
 	}
+#endif
 	if (!(comp && comp->funcs && comp->funcs->io_cmd))
 		ADFR_ERR("Invalid mtk_ddp_comp pointer");
 		return -1;
@@ -1266,10 +1276,17 @@ static int oplus_adfr_send_auto_minfps_dcs(struct drm_crtc *crtc, u32 extend_fra
 
 	/* SDC's auto, fakeframe and minfps are available only after power on */
 	crtc_state = to_mtk_crtc_state(crtc->state);
+#ifdef OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT
+	if ((!mtk_crtc->enabled || crtc_state->prop_val[CRTC_PROP_DOZE_ACTIVE]) && !oplus_ofp_full_screen_aod_mode_is_enabled()) {
+		ADFR_WARN("ignore %s when power is off", __func__);
+		return -1;
+	}
+#else
 	if (!mtk_crtc->enabled || crtc_state->prop_val[CRTC_PROP_DOZE_ACTIVE]) {
 		ADFR_WARN("ignore %s:%d %u when power is off", __func__, __LINE__, extend_frame);
 		return 0;
 	}
+#endif
 /*
 	if (!mtk_crtc->panel_ext) {
 		return -1;

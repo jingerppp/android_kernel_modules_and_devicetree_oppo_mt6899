@@ -146,6 +146,8 @@ source "$(KCONFIG_EXT_PREFIX)drivers/misc/oplus/vibrator/aw8697_haptic/Kconfig"
 
 source "$(KCONFIG_EXT_PREFIX)drivers/misc/oplus/vibrator/si_haptic/Kconfig"
 
+source "$(KCONFIG_EXT_PREFIX)drivers/misc/oplus/vibrator/oplus_haptic/Kconfig"
+
 source "$(KCONFIG_EXT_PREFIX)drivers/misc/oplus/sim_detect/Kconfig"
 
 source "$(KCONFIG_EXT_PREFIX)drivers/input/fingerprint/Kconfig"

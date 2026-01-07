@@ -2768,8 +2768,6 @@ int SetRadarDetectMode(struct net_device *prNetDev,
 
 	ucRadarDetectMode = (uint8_t) radarDetectMode;
 
-	p2pFuncSetRadarDetectMode(ucRadarDetectMode);
-
 	if (rv == 0)
 		i4Status = MT_ATESetRadarDetectMode(prNetDev,
 						    ucRadarDetectMode);

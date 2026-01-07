@@ -2883,7 +2883,7 @@
 		/* OFP config */
 		oplus,ofp-fp-type = <0x410>;
 		oplus,ofp-fp-local-hbm-calibration;
-		oplus,ofp-longrui-aod-config = <0x06>;
+		oplus,ofp-longrui-aod-config = <0x0E>;
 		/* ext_params */
 		oplus,panel-type = <2>;
 		oplus,keep_ulps = <1>;

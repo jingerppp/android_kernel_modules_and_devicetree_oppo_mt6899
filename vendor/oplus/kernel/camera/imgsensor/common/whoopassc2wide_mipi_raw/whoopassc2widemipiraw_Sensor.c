@@ -49,9 +49,9 @@
 
 static u8 pdc_is_valid = 0;
 static u8 mirror_flag = 0;
+static u8 read_mirror_cnt = 0;
 
 #define OTP_MIRROR_ADDR     (0x0013)
-#define OTP_IS_MIRROR       (0x01)
 #define WHOOPASSC2WIDE_IMGSENSOR_ID   (0x50F6)
 
 #define WHOOPASSC2WIDE_UNIQUE_SENSOR_ID_ADDR    (0x7000)  //?????
@@ -898,8 +898,8 @@ static struct subdrv_static_ctx static_ctx = {
 	.reg_addr_frame_count = PARAM_UNDEFINED,
 	.reg_addr_fast_mode = PARAM_UNDEFINED,
 
-	.init_setting_table = whoopassc2wide_init_setting,
-	.init_setting_len = ARRAY_SIZE(whoopassc2wide_init_setting),
+	.init_setting_table = whoopassc2wide_init_setting_HV,
+	.init_setting_len = ARRAY_SIZE(whoopassc2wide_init_setting_HV),
 	.mode = mode_struct,
 	.sensor_mode_num = ARRAY_SIZE(mode_struct),
 	.list = feature_control_list,
@@ -1624,7 +1624,7 @@ static int get_sensor_temperature(void *arg)
 	}
 	DRV_LOG(ctx, "reg_val:0x%x, temperature: %d degrees\n", temperature, temperature_convert);
 
-	if ( temperature_convert > 100 ) {
+	if (temperature_convert < 0 || temperature_convert > 80) {
 		temperature_convert = INVALID_TEMP_VALUE;
 	}
 
@@ -1827,20 +1827,18 @@ static int init_ctx(struct subdrv_ctx *ctx,	struct i2c_client *i2c_client, u8 i2
 	memcpy(&(ctx->s_ctx), &static_ctx, sizeof(struct subdrv_static_ctx));
 	ctx->i2c_client = i2c_client;
 	ctx->i2c_write_id = i2c_write_id;
-	mirror_flag = read_cmos_eeprom_8(ctx, OTP_MIRROR_ADDR);
 
-	if (mirror_flag != OTP_IS_MIRROR){
-		LOG_INF("init_ctx mirror_flag:%x, init_normal_setting", mirror_flag);
+	if (!read_mirror_cnt) {
+		mirror_flag = read_cmos_eeprom_8(ctx, OTP_MIRROR_ADDR);
+		read_mirror_cnt++;
+	}
+	LOG_INF("init_ctx mirror_flag:%x", mirror_flag);
+	if (mirror_flag == 0xFF) {
+		LOG_INF("init_ctx IMAGE_NORMAL");
 		ctx->s_ctx.mirror = IMAGE_NORMAL;
 		ctx->s_ctx.sensor_output_dataformat = SENSOR_OUTPUT_FORMAT_RAW_4CELL_HW_BAYER_Gr;
 		ctx->s_ctx.init_setting_table = whoopassc2wide_init_setting;
 		ctx->s_ctx.init_setting_len = ARRAY_SIZE(whoopassc2wide_init_setting);
-	} else{
-		LOG_INF("init_ctx mirror_flag:%x, init_HV_setting", mirror_flag);
-		ctx->s_ctx.mirror = IMAGE_HV_MIRROR;
-		ctx->s_ctx.sensor_output_dataformat = SENSOR_OUTPUT_FORMAT_RAW_4CELL_HW_BAYER_Gb;
-		ctx->s_ctx.init_setting_table = whoopassc2wide_init_setting_HV;
-		ctx->s_ctx.init_setting_len = ARRAY_SIZE(whoopassc2wide_init_setting_HV);
 	}
 	subdrv_ctx_init(ctx);
 	//hw_init_time

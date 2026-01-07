@@ -63,6 +63,7 @@ static uint8_t is_rx_queue_res_available(uint32_t length)
 	spin_unlock(&p_ring->lock);
 
 	if (room_left < length) {
+		BTMTK_WARN("read index = (%u), write index = (%u)", p_ring->read_idx, p_ring->write_idx);
 		BTMTK_WARN("RX queue room left (%u) < required (%u)", room_left, length);
 		return FALSE;
 	}
@@ -113,13 +114,13 @@ int32_t rx_skb_enqueue(struct sk_buff *skb)
 	   driver can wait a interval for native process to read out */
 	if(g_bt_dbg_st.rx_buf_ctrl == TRUE) {
 		for(i = 0; i < WAIT_TIMES; i++) {
-			if (!is_rx_queue_res_available(skb->len + 1)) {
+			if (!is_rx_queue_res_available(skb->len + 2)) {
 				usleep_range(USLEEP_5MS_L, USLEEP_5MS_H);
 			} else
 				break;
 		}
 	}
-	if (!is_rx_queue_res_available(skb->len + 1)) {
+	if (!is_rx_queue_res_available(skb->len + 2)) {
 		BTMTK_WARN("rx packet drop!!!");
 		ret = -1;
 		goto end;

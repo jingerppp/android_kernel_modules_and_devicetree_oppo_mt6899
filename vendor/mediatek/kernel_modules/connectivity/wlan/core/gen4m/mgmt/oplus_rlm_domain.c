@@ -270,10 +270,31 @@ static int generate_channel_cfg(struct DOMAIN_SUBBAND_INFO* info, uint8_t *buff,
         offset++;
     }
     if (DEBUG) {
-        DBGLOG(RLM, ERROR, "ucRegClass %d, ucBand %d, ucChannelSpan %d,ucFirstChannelNum %d, ucNumChannels %d, fgDfs %x", 
+        DBGLOG(RLM, ERROR, "ucRegClass %d, ucBand %d, ucChannelSpan %d,ucFirstChannelNum %d, ucNumChannels %d, fgDfs %x",
                 info->ucRegClass, info->ucBand, info->ucChannelSpan, info->ucFirstChannelNum, info->ucNumChannels, info->fgDfs);
     }
     return offset;
+}
+
+/*
+* parse string into channel ver
+*
+* @parameter buff - string of country cfg in one line
+* @parameter length of buffer
+* Return the ver of channel cfg
+*/
+static int generate_channel_ver(uint8_t *buff, int len)
+{
+	uint8_t channel_ver = 0;
+	buff = buff + FORMAT_CHANNEL_VER_SIZE;
+	len = len - FORMAT_CHANNEL_VER_SIZE;
+	if (buff != NULL && buff[0] != FORMAT_STRING_END) {
+		channel_ver = convertstring(&buff[0]);
+	}
+	if (DEBUG) {
+		DBGLOG(RLM, ERROR, "channel_ver %d", channel_ver);
+	}
+	return channel_ver;
 }
 
 /*
@@ -334,6 +355,7 @@ static OPLUS_DOMAIN_INFO_ENTRY* parse_cfg_file(const char *path, unsigned int si
     struct DOMAIN_INFO_ENTRY* domain_info = NULL;
     struct OPLUS_DOMAIN_INFO_ENTRY *oplus_entry = NULL;
     uint32_t u4ConfigReadLen;
+	uint8_t u4ChannelVer = 0;
     int len = 0;
     struct GLUE_INFO *prGlueInfo = NULL;
 
@@ -378,6 +400,8 @@ static OPLUS_DOMAIN_INFO_ENTRY* parse_cfg_file(const char *path, unsigned int si
         } else if(oneLine[0] == FORMAT_CHANNEL_CFG) {
             generate_channel_cfg(&domain_info->rSubBand[cc_count%FORMAT_CHANNEL_NUM], oneLine, len);
             cc_count++;
+		} else if (oneLine[0] == FORMAT_CHANNEL_VER) {
+			u4ChannelVer = generate_channel_ver(oneLine, len);
         } else if(oneLine[0] == FORMAT_FILE_END) {
             break;
         }
@@ -399,6 +423,7 @@ static OPLUS_DOMAIN_INFO_ENTRY* parse_cfg_file(const char *path, unsigned int si
     oplus_entry->entry = cg_count == doamin_info_size ?
             oplus_domain_info : cut_unused_memory(oplus_domain_info, cg_count, doamin_info_size);
     oplus_entry->size = cg_count;
+	oplus_entry->chver = u4ChannelVer;
     if (DEBUG) {
         dump_domain_info(oplus_entry->entry, cg_count);
     }

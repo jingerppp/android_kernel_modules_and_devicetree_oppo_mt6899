@@ -148,7 +148,7 @@ struct mml_dev {
 	struct cmdq_base *cmdq_base;
 	struct cmdq_client *cmdq_clts[MML_MAX_CMDQ_CLTS];
 	u8 cmdq_clt_cnt;
-	struct kthread_worker *kt_config;
+	struct kthread_worker *kt_workers[mml_kt_total];
 
 	u32 sw_ver;
 	atomic_t drm_cnt;
@@ -216,6 +216,14 @@ struct mml_dev {
 #ifdef MML_DEBUG_PROC
 	struct proc_dir_entry *dbg_procfs;
 #endif
+};
+
+static const char *mml_kt_name[mml_kt_total] = {
+	[mml_kt_hwdone]		= "mml_drm_done",
+	[mml_kt_taskdone]	= "mml_taskdone",
+	[mml_kt_config0]	= "mml_work0",
+	[mml_kt_config1]	= "mml_work1",
+	[mml_kt_dle_done]	= "mml_dle_done",
 };
 
 int mml_comp_add(u32 id, struct device *dev, const struct component_ops *ops)
@@ -673,9 +681,9 @@ exit:
 	return ctx;
 }
 
-struct kthread_worker *mml_dev_get_config_worker(struct mml_dev *mml)
+struct kthread_worker *mml_dev_get_kt_worker(struct mml_dev *mml, enum mml_kt kt_id)
 {
-	return mml->kt_config;
+	return mml->kt_workers[kt_id];
 }
 
 struct mml_v4l2_dev *mml_get_v4l2_dev(struct mml_dev *mml)
@@ -2248,6 +2256,24 @@ static const struct proc_ops mml_debug_proc_fops = {
 };
 #endif
 
+static struct kthread_worker *mml_worker_create(const char *name)
+{
+	struct kthread_worker *kt;
+
+	kt = kthread_create_worker(0, "%s", name);
+	if (IS_ERR(kt)) {
+		/* create thread fail */
+		mml_log("%s create thread %s fail %pe", __func__, name, kt);
+	} else {
+		struct sched_param kt_param = { .sched_priority = 1 };
+		int ret = sched_setscheduler(kt->task, SCHED_FIFO, &kt_param);
+
+		mml_log("%s thread %s result %d", __func__, name, ret);
+	}
+
+	return kt;
+}
+
 static bool dbg_probed;
 static int mml_probe(struct platform_device *pdev)
 {
@@ -2262,17 +2288,8 @@ static int mml_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	platform_set_drvdata(pdev, mml);
 
-	mml->kt_config = kthread_create_worker(0, "mml_work0");
-	if (IS_ERR(mml->kt_config)) {
-		ret = PTR_ERR(mml->kt_config);
-		mml_log("%s create thread fail %d", __func__, ret);
-		goto err_sys_add;
-	} else {
-		struct sched_param kt_param = { .sched_priority = MAX_RT_PRIO - 1 };
-
-		ret = sched_setscheduler(mml->kt_config->task, SCHED_FIFO, &kt_param);
-		mml_log("%s thread work0 ret %d", __func__, ret);
-	}
+	for (i = 0; i < mml_kt_total_common; i++)
+		mml->kt_workers[i] = mml_worker_create(mml_kt_name[i]);
 
 	mml->pdev = pdev;
 	mutex_init(&mml->sys_state_mutex);
@@ -2330,6 +2347,8 @@ static int mml_probe(struct platform_device *pdev)
 	mml->racing_en = of_property_read_bool(dev->of_node, "racing-enable");
 	if (mml->racing_en)
 		mml_log("IR mode enable");
+	mml->kt_workers[mml_kt_dle_done] =
+		mml_worker_create(mml_kt_name[mml_kt_dle_done]);
 #endif
 
 	if (of_property_read_u8(dev->of_node, "mml-max-layer", &mml->max_layer))
@@ -2441,10 +2460,14 @@ static int mml_remove(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct mml_dev *mml = platform_get_drvdata(pdev);
+	u32 i;
 
-	if (mml->kt_config) {
-		kthread_destroy_worker(mml->kt_config);
-		mml->kt_config = NULL;
+	for (i = 0; i < ARRAY_SIZE(mml->kt_workers); i++) {
+		if (!mml->kt_workers[i])
+			continue;
+		if (!IS_ERR(mml->kt_workers[i]))
+			kthread_destroy_worker(mml->kt_workers[i]);
+		mml->kt_workers[i] = NULL;
 	}
 
 #ifdef MML_DEBUG_PROC

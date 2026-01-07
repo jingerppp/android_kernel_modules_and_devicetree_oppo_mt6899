@@ -97,6 +97,10 @@
 #endif
 #endif
 
+#ifdef OPLUS_FEATURE_WIFI_SAP_ACCELERATE
+#include "oplus_sap_accelerate.h"
+#endif /* OPLUS_FEATURE_WIFI_SAP_ACCELERATE */
+
 extern void set_logtoomuch_enable(int value) __attribute__((weak));
 extern int get_logtoomuch_enable(void) __attribute__((weak));
 extern uint32_t get_wifi_standalone_log_mode(void) __attribute__((weak));
@@ -2301,6 +2305,10 @@ uint32_t kalRxIndicateOnePkt(struct GLUE_INFO
 
 	kalTraceEvent("Rx ipid=0x%04x", GLUE_GET_PKT_IP_ID(prSkb));
 
+#ifdef OPLUS_FEATURE_WIFI_SAP_ACCELERATE
+    oplusKalRxSavePriorPktInfo(prSkb);
+#endif /* OPLUS_FEATURE_WIFI_SAP_ACCELERATE */
+
 #if CFG_SUPPORT_RX_GRO
 #if CFG_SUPPORT_SKIP_RX_GRO_FOR_TC
 	if (kalGetSkipRxGro(prNetDev))
@@ -2331,16 +2339,12 @@ uint32_t kalRxIndicateOnePkt(struct GLUE_INFO
 			if (prGlueInfo->fgNapiReady &&
 			    !prGlueInfo->fgNapiScheduleTimeout) {
 				skb_queue_tail(&prGlueInfo->rRxNapiSkbQ, prSkb);
-				if (kal_napi_schedule(&prGlueInfo->napi)) {
-					RX_INC_CNT(
-						&prGlueInfo->prAdapter->rRxCtrl,
-						RX_NAPI_SCHEDULE_COUNT);
-				}
+				kalNapiSchedule(prGlueInfo->prAdapter);
 			} else {
 				RX_INC_CNT(
 					&prGlueInfo->prAdapter->rRxCtrl,
 					RX_NAPI_SCHEDULE_FAIL_COUNT);
-				DBGLOG(RX, TRACE,
+				DBGLOG(RX, LOUD,
 					"Skip napi schedule fail, NapiReady:%u NapiScheduleTimeout:%u\n",
 					prGlueInfo->fgNapiReady,
 					prGlueInfo->fgNapiScheduleTimeout);
@@ -4838,6 +4842,10 @@ kalQoSFrameClassifierAndPacketInfo(struct GLUE_INFO *prGlueInfo,
 	}
 #endif
 
+#ifdef OPLUS_FEATURE_WIFI_SAP_ACCELERATE
+    oplusKalTxAcceleratePriorPkt(prSkb);
+#endif /* OPLUS_FEATURE_WIFI_SAP_ACCELERATE */
+
 #ifdef CONFIG_ANDROID_KABI_RESERVE
 	if (prSkb->android_kabi_reserved2 & TX_STREAM_ACCELERATE_FLAG == TX_STREAM_ACCELERATE_FLAG) {
 		prTxPktInfo->ucPriorityParam = NIC_TX_PRIORITY_DATA_TID;
@@ -6414,7 +6422,7 @@ int main_thread(void *data)
 
 #if CFG_SUPPORT_HRTIMER
 		if (test_and_clear_bit(GLUE_FLAG_HRTIMER_BIT,
-				       &prGlueInfo->ulFlag))
+				       &prGlueInfo->ulFlag)) {
 			if (KAL_WAKE_LOCK_ACTIVE(prGlueInfo->prAdapter,
 					 prGlueInfo->prHrtimerWakeLock)) {
 				KAL_WAKE_UNLOCK(prGlueInfo->prAdapter,
@@ -6422,11 +6430,12 @@ int main_thread(void *data)
 			}
 			TRACE(wlanHrtimerTimeout(prGlueInfo->prAdapter),
 			      "HRTIMER_TIMEOUT");
+		}
 #endif
 
 #if CFG_SUPPORT_ALARMTIMER
 		if (test_and_clear_bit(GLUE_FLAG_ALARMTIMER_BIT,
-				       &prGlueInfo->ulFlag))
+				       &prGlueInfo->ulFlag)) {
 			if (KAL_WAKE_LOCK_ACTIVE(prGlueInfo->prAdapter,
 					 prGlueInfo->prAlarmTimerWakeLock)) {
 				KAL_WAKE_UNLOCK(prGlueInfo->prAdapter,
@@ -6434,6 +6443,7 @@ int main_thread(void *data)
 			}
 			TRACE(wlanAlarmTimerTimeout(prGlueInfo->prAdapter),
 				"ALARMTIMER_TIMEOUT");
+		}
 #endif
 
 		if (test_and_clear_bit(GLUE_FLAG_TIMEOUT_BIT,
@@ -7032,7 +7042,7 @@ enum hrtimer_restart kalHrtimerTimeout(struct hrtimer *prHrtimer)
 	struct GLUE_INFO *prGlueInfo;
 	struct TIMER *prTimer;
 	struct ADAPTER *prAdapter;
-	struct QUE *prQue;
+	struct LINK *prList;
 
 	KAL_SPIN_LOCK_DECLARATION();
 
@@ -7049,11 +7059,11 @@ enum hrtimer_restart kalHrtimerTimeout(struct hrtimer *prHrtimer)
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_LIST);
 
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_TIMEOUT);
-	prQue = &prAdapter->rTimeoutedHrtimerInfoQue;
-	QUEUE_INSERT_TAIL(prQue, &prTimer->rHrtimeoutQueEntry);
+	prList = &prAdapter->rTimeoutedHrtimerList;
+	LINK_INSERT_TAIL(prList, &prTimer->rHrtimeoutLinkEntry);
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_TIMEOUT);
 
-	DBGLOG(INIT, TRACE, "hrtimer timeout %p\n", prHrtimer);
+	DBGLOG(INIT, INFO, "hrtimer timeout %p\n", prHrtimer);
 
 	set_bit(GLUE_FLAG_HRTIMER_BIT, &prGlueInfo->ulFlag);
 #if CFG_ENABLE_WAKE_LOCK
@@ -7095,7 +7105,7 @@ void kalHrtimerStart(struct hrtimer *prTimer, uint32_t delayMs)
 	prTimer->function = kalHrtimerTimeout;
 	hrtimer_start(prTimer, kTargetTime, HRTIMER_MODE_ABS);
 
-	DBGLOG(INIT, TRACE, "hrtimer %p %lldms started\n", prTimer, delayMs);
+	DBGLOG(INIT, INFO, "hrtimer %p %lldms started\n", prTimer, delayMs);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -7114,7 +7124,7 @@ void kalHrtimerCancel(struct hrtimer *prTimer)
 	hrtimer_cancel(prTimer);
 	prTimer->function = NULL;
 
-	DBGLOG(INIT, TRACE, "hrtimer %p stopped\n", prTimer);
+	DBGLOG(INIT, INFO, "hrtimer %p stopped\n", prTimer);
 }
 #endif /* CFG_SUPPORT_HRTIMER */
 
@@ -7141,7 +7151,7 @@ enum alarmtimer_restart kalAlarmTimerTimeout(
 	struct GLUE_INFO *prGlueInfo;
 	struct TIMER *prTimer;
 	struct ADAPTER *prAdapter;
-	struct QUE *prQue;
+	struct LINK *prList;
 
 	KAL_SPIN_LOCK_DECLARATION();
 
@@ -7160,8 +7170,8 @@ enum alarmtimer_restart kalAlarmTimerTimeout(
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_LIST);
 
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_TIMEOUT);
-	prQue = &prAdapter->rTimeoutedAlarmTimerInfoQue;
-	QUEUE_INSERT_TAIL(prQue, &prTimer->rAlarmTimeoutQueEntry);
+	prList = &prAdapter->rTimeoutedAlarmTimerList;
+	LINK_INSERT_TAIL(prList, &prTimer->rAlarmTimeoutLinkEntry);
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_TIMEOUT);
 
 	DBGLOG(INIT, INFO, "alarmtimer timeout %p\n", prAlarmTimer);
@@ -12004,9 +12014,9 @@ static uint32_t kalPerMonUpdate(struct ADAPTER *prAdapter)
 #endif /* CFG_QUEUE_RX_IF_CONN_NOT_READY */
 
 #if CFG_SUPPORT_RX_GRO
-#define NAPI_TEMPLATE "NAPI[%lu,%lu,0x%03x,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u] "
+#define NAPI_TEMPLATE "NAPI[%lu,%lu,0x%03lx,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u] "
 #else
-#define NAPI_TEMPLATE "NAPI[%lu,%lu,0x%03x,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu] "
+#define NAPI_TEMPLATE "NAPI[%lu,%lu,0x%03lx,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu] "
 #endif
 
 #if CFG_NAPI_DELAY
@@ -15398,7 +15408,7 @@ void kal_napi_synchronize(struct napi_struct *n)
 
 	if (IS_ENABLED(CONFIG_SMP))
 		while (test_bit(NAPI_STATE_SCHED, &n->state)) {
-			msleep(1);
+			kalMsleep(20);
 
 			u4LastState = n->state;
 
@@ -15524,6 +15534,7 @@ static inline void __kalNapiSchedule(struct ADAPTER *prAdapter)
 {
 	struct GLUE_INFO *prGlueInfo;
 	struct RX_CTRL *prRxCtrl;
+	struct napi_struct *prNapi;
 
 	if (!prAdapter || !prAdapter->prGlueInfo)
 		return;
@@ -15535,8 +15546,13 @@ static inline void __kalNapiSchedule(struct ADAPTER *prAdapter)
 		return;
 	}
 
+	if (HAL_IS_RX_DIRECT(prAdapter))
+		prNapi = prGlueInfo->prRxDirectNapi;
+	else
+		prNapi = &prGlueInfo->napi;
+
 	prRxCtrl = &prAdapter->rRxCtrl;
-	if (kal_napi_schedule(prGlueInfo->prRxDirectNapi)) {
+	if (kal_napi_schedule(prNapi)) {
 		RX_INC_CNT(prRxCtrl, RX_NAPI_SCHEDULE_COUNT);
 	} else {
 		RX_INC_CNT(prRxCtrl, RX_NAPI_SCHEDULE_FAIL_COUNT);
@@ -15573,7 +15589,7 @@ static void kalNapiScheduleCheck(struct GLUE_INFO *prGlueInfo)
 		prGlueInfo->u4LastNapiPollCnt = u4NapiPollCnt;
 		last = 0;
 	} else if ((KAL_GET_FIFO_CNT(prGlueInfo) != 0 ||
-		   skb_queue_len(&prGlueInfo->rRxNapiSkbQ) != 0)&&
+		   skb_queue_len(&prGlueInfo->rRxNapiSkbQ) != 0) &&
 		   u4NapiPollCnt == prGlueInfo->u4LastNapiPollCnt &&
 		   last == 0) {
 		last = now;
@@ -15689,7 +15705,8 @@ static u_int8_t kalIsNapiDelay(struct GLUE_INFO *pr)
 		return TRUE;
 
 	/* start timer when delay napi, skip schedule */
-	if (KAL_GET_FIFO_CNT(pr) < prWifiVar->u4NapiDelayCntTh) {
+	if (KAL_GET_FIFO_CNT(pr) < prWifiVar->u4NapiDelayCntTh ||
+		skb_queue_len(&pr->rRxNapiSkbQ) < prWifiVar->u4NapiDelayCntTh) {
 		kalNapiDelayTimerStart(pr, prWifiVar->u4NapiDelayTimeout);
 		return TRUE;
 	}

@@ -426,7 +426,7 @@ static const struct mml_config_ops dle_config_ops = {
 struct mml_dle_ctx *mml_dle_ctx_create(struct mml_dev *mml)
 {
 	static const char * const threads[] = {
-		"mml_dle_done", "mml_destroy_dl",
+		NULL, "mml_dle_taskdone", "mml_destroy_dl",
 		NULL, NULL,
 	};
 	struct mml_dle_ctx *ctx;
@@ -437,6 +437,8 @@ struct mml_dle_ctx *mml_dle_ctx_create(struct mml_dev *mml)
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return ERR_PTR(-ENOMEM);
+
+	ctx->ctx.kt_hwdone = mml_dev_get_kt_worker(mml, mml_kt_dle_done);
 
 	ret = mml_ctx_init(&ctx->ctx, mml, threads);
 	if (ret) {
@@ -472,6 +474,9 @@ struct mml_dle_ctx *mml_dle_get_context(struct device *dev,
 static void dle_ctx_release(struct mml_dle_ctx *ctx)
 {
 	mml_msg("[dle]%s on ctx %p", __func__, ctx);
+
+	/* clear since this thread come from mml drv */
+	ctx->ctx.kt_hwdone = NULL;
 
 	mml_ctx_deinit(&ctx->ctx);
 	/* no need for ctx->tile_cache[i].tiles, since dle adaptor

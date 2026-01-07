@@ -2334,6 +2334,7 @@ static int mtk_p2p_cfg80211_start_radar_detection_impl(struct wiphy *wiphy,
 		if (mtk_Netdev_To_RoleIdx(prGlueInfo, dev, &ucRoleIdx) < 0)
 			break;
 
+		p2pFuncSetRadarDetectMode(2);
 		i4Rslt = kalP2pFuncPreStartRdd(
 			prGlueInfo,
 			ucRoleIdx,

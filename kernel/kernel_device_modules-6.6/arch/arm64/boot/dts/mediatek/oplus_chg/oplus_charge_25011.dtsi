@@ -692,7 +692,7 @@
 			oplus,gauge_ic = <&mt6375_gauge &oplus_mt6895_gauge &maxim_encryption_gauge>;
 			oplus,gauge_ic_index = <0 1 2>;
 			oplus,gauge_ic_func_group = <&mt6375_gauge_groups &mt6895_gauge_groups &maxim_encryption_gauge_groups>;
-			oplus,batt_capacity_mah = <6200>;
+			oplus,batt_capacity_mah = <6500>;
 			oplus,ic_type = <OPLUS_CHG_IC_VIRTUAL_GAUGE>;
 			oplus,ic_index = <0>;
 		};

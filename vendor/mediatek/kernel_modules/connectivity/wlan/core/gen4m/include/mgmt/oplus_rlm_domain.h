@@ -23,6 +23,9 @@
 #define FORMAT_COUNTRY_GROUP 'G'
 #define FORMAT_COUNTRY_GROUP_SIZE 2
 
+#define FORMAT_CHANNEL_VER 'V'
+#define FORMAT_CHANNEL_VER_SIZE 2
+
 #define FORMAT_SEPARATION ','
 #define FORMAT_STRING_END '\0'
 #define FORMAT_FILE_END '#'
@@ -58,7 +61,17 @@ typedef enum FORMAT_RLM_SUB_INDEX {
 typedef struct OPLUS_DOMAIN_INFO_ENTRY {
     struct DOMAIN_INFO_ENTRY *entry;
     int size;
+    uint8_t chver;
 } OPLUS_DOMAIN_INFO_ENTRY;
+
+#ifdef OPLUS_FEATURE_WIFI_POWER
+//add for BW limit according to special country which based on oplus channel ver
+struct OPLUS_CHANNEL_BW_SPECIAL_COUNTRY {
+    uint8_t ver;
+    uint16_t *bwspecountry;
+    uint16_t tableSize;
+};
+#endif /* OPLUS_FEATURE_WIFI_POWER */
 
 /*
 * @parameter DOMAIN_INFO_ENTRY link to rlm_domain.h

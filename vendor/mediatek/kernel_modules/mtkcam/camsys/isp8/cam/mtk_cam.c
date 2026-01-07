@@ -1480,7 +1480,9 @@ static int mtk_cam_initialize(struct mtk_cam_device *cam)
 		return 0;
 
 	dev_info(cam->dev, "camsys initialize\n");
-
+	#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	mutex_lock(&cam->rproc_lock);
+	#endif
 	mtk_cam_dvfs_reset_runtime_info(&cam->dvfs);
 
 	WARN_ON(pm_runtime_get_sync(cam->dev));
@@ -1491,9 +1493,16 @@ static int mtk_cam_initialize(struct mtk_cam_device *cam)
 #endif /*OPLUS_FEATURE_CAMERA_COMMON*/
 
 	ret = mtk_cam_power_rproc(cam, 1);
+	#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if (ret) {
+		mutex_unlock(&cam->rproc_lock);
+		return ret; //TODO: goto
+	}
+	mutex_unlock(&cam->rproc_lock);
+	#else
 	if (ret)
 		return ret; //TODO: goto
-
+	#endif
 	mtk_cam_debug_exp_reset(&cam->dbg);
 
 	return ret;
@@ -1505,9 +1514,14 @@ int mtk_cam_uninitialize(struct mtk_cam_device *cam)
 		return 0;
 
 	dev_info(cam->dev, "camsys uninitialize\n");
-
+	#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	mutex_lock(&cam->rproc_lock);
+	#endif
 	mtk_cam_power_rproc(cam, 0);
 	pm_runtime_put_sync(cam->dev);
+	#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	mutex_unlock(&cam->rproc_lock);
+	#endif
 	wake_up(&cam->shutdown_wq);
 
 	return 0;
@@ -5382,7 +5396,9 @@ SKIP_ADLRD_IRQ:
 
 	for (i = 0; i < cam_dev->max_stream_num; i++)
 		mtk_cam_ctx_init(cam_dev->ctxs + i, cam_dev, i);
-
+	#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	mutex_init(&cam_dev->rproc_lock);
+	#endif
 	spin_lock_init(&cam_dev->streaming_lock);
 	spin_lock_init(&cam_dev->pending_job_lock);
 	spin_lock_init(&cam_dev->running_job_lock);

@@ -1129,6 +1129,16 @@ int priv_driver_set_mddp_test(struct net_device *prNetDev,
 
 int priv_driver_dump_wfsys_cpupcr(struct net_device *prNetDev,
 				  char *pcCommand, int i4TotalLen);
+
+#ifdef OPLUS_FEATURE_WIFI_SAP_ACCELERATE
+int priv_driver_enable_oplus_sap_accelerate(struct net_device *prNetDev,
+    char *pcCommand, int i4TotalLen);
+int priv_driver_disable_oplus_sap_accelerate(struct net_device *prNetDev,
+    char *pcCommand, int i4TotalLen);
+int priv_driver_get_oplus_sap_accelerate_status(struct net_device *prNetDev,
+    char *pcCommand, int i4TotalLen);
+#endif /* OPLUS_FEATURE_WIFI_SAP_ACCELERATE */
+
 /*******************************************************************************
  *                              F U N C T I O N S
  *******************************************************************************

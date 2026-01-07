@@ -546,6 +546,10 @@ static void conap_scp_msg_notify(uint16_t drv_type, uint16_t msg_id,
 		pr_warn("[%s] msg buf is null", __func__);
 		return;
 	}
+	if (data == NULL) {
+		pr_warn("[%s] data is null", __func__);
+		return;
+	}
 
 	g_cur_msg_id = msg_id;
 	memcpy(&(g_cur_msg_recv_buf[g_cur_recv_sz]), data, this_sz);

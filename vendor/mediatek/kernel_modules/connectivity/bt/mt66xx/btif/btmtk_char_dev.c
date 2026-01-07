@@ -365,7 +365,7 @@ static ssize_t BT_read(struct file *filp, char __user *buf, size_t count, loff_t
 			 * O_NONBLOCK is specified during open().
 			 */
 			if (filp->f_flags & O_NONBLOCK) {
-				BTMTK_ERR("Non-blocking read, no data is available!");
+				//BTMTK_ERR("Non-blocking read, no data is available!");
 				retval = -EAGAIN;
 				goto OUT;
 			}

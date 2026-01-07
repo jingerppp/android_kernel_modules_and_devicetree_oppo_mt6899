@@ -113,6 +113,7 @@ COMMON_OPLUS_MODULES_LIST = [
     "//vendor/oplus/kernel/mm:oplus_bsp_kshrink_slabd",
     "//vendor/oplus/kernel/mm:oplus_bsp_abort_mm_opt",
     "//vendor/oplus/kernel/mm:oplus_bsp_zstdn",
+    "//vendor/oplus/kernel/mm:oplus_bsp_zstdn_o",
     "//vendor/oplus/kernel/synchronize:oplus_lock_torture",
     "//vendor/oplus/kernel/wifi:oplus_connectivity_routerboost",
     "//vendor/oplus/kernel/wifi:oplus_connectivity_sla",
@@ -143,6 +144,7 @@ COMMON_OPLUS_MODULES_LIST = [
     "//vendor/oplus/kernel/dfr:oplus_bsp_dfr_kp_freeze_detect",
     "//vendor/oplus/kernel/graphics:oplus_sync_fence",
     "//vendor/oplus/kernel/power/rpmh:oplus_rpmh_statics",
+    "//vendor/oplus/kernel/patch:oplus_patch",
 ]
 
 """

@@ -1630,7 +1630,7 @@ static int get_sensor_temperature(void *arg)
 	}
 	DRV_LOG(ctx, "reg_val:0x%x, temperature: %d degrees\n", temperature, temperature_convert);
 
-	if ( temperature_convert > 100 ) {
+	if (temperature_convert < 0 || temperature_convert > 80) {
 		temperature_convert = INVALID_TEMP_VALUE;
 	}
 

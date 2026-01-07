@@ -5033,8 +5033,9 @@ uint32_t wlanTimerTimeoutCheck(struct ADAPTER *prAdapter)
 #if CFG_SUPPORT_HRTIMER
 uint32_t wlanHrtimerTimeout(struct ADAPTER *prAdapter)
 {
-	struct QUE tmpQue;
+	struct LINK *prList;
 	struct TIMER *prTimer;
+	struct LINK rTempList;
 
 	KAL_SPIN_LOCK_DECLARATION();
 
@@ -5042,16 +5043,21 @@ uint32_t wlanHrtimerTimeout(struct ADAPTER *prAdapter)
 		DBGLOG(P2P, ERROR, "Null adapter\n");
 		return WLAN_STATUS_FAILURE;
 	}
+	prList = &prAdapter->rTimeoutedHrtimerList;
+	LINK_INITIALIZE(&rTempList);
 
+	/* Move to temp list */
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_TIMEOUT);
-	QUEUE_MOVE_ALL(&tmpQue, &prAdapter->rTimeoutedHrtimerInfoQue);
+	while (!LINK_IS_EMPTY(prList)) {
+		LINK_REMOVE_HEAD(prList, prTimer, struct TIMER *);
+		LINK_INSERT_TAIL(&rTempList, &prTimer->rHrtimeoutLinkEntry);
+	}
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_TIMEOUT);
 
-	while (QUEUE_IS_NOT_EMPTY(&tmpQue)) {
-		QUEUE_REMOVE_HEAD(&tmpQue, prTimer, struct TIMER *);
-
+	while (!LINK_IS_EMPTY(&rTempList)) {
+		LINK_REMOVE_HEAD(&rTempList, prTimer, struct TIMER *);
 		if (!prTimer) {
-			DBGLOG(P2P, ERROR, "Null CSA timer\n");
+			DBGLOG(P2P, ERROR, "Null timer\n");
 			continue;
 		}
 
@@ -5065,8 +5071,9 @@ uint32_t wlanHrtimerTimeout(struct ADAPTER *prAdapter)
 #if CFG_SUPPORT_ALARMTIMER
 uint32_t wlanAlarmTimerTimeout(struct ADAPTER *prAdapter)
 {
-	struct QUE tmpQue;
+	struct LINK *prList;
 	struct TIMER *prTimer;
+	struct LINK rTempList;
 
 	KAL_SPIN_LOCK_DECLARATION();
 
@@ -5074,16 +5081,23 @@ uint32_t wlanAlarmTimerTimeout(struct ADAPTER *prAdapter)
 		DBGLOG(P2P, ERROR, "Null adapter\n");
 		return WLAN_STATUS_FAILURE;
 	}
+	prList = &prAdapter->rTimeoutedAlarmTimerList;
+	LINK_INITIALIZE(&rTempList);
 
+	/* Move to temp list */
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_TIMEOUT);
-	QUEUE_MOVE_ALL(&tmpQue, &prAdapter->rTimeoutedAlarmTimerInfoQue);
+	while (!LINK_IS_EMPTY(prList)) {
+		LINK_REMOVE_HEAD(prList, prTimer, struct TIMER *);
+		LINK_INSERT_TAIL(&rTempList, &prTimer->rAlarmTimeoutLinkEntry);
+	}
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_TIMEOUT);
 
-	while (QUEUE_IS_NOT_EMPTY(&tmpQue)) {
-		QUEUE_REMOVE_HEAD(&tmpQue, prTimer, struct TIMER *);
-
-		if (!prTimer)
+	while (!LINK_IS_EMPTY(&rTempList)) {
+		LINK_REMOVE_HEAD(&rTempList, prTimer, struct TIMER *);
+		if (!prTimer) {
+			DBGLOG(P2P, ERROR, "Null timer\n");
 			continue;
+		}
 
 		prTimer->pfAlarmTimeoutFunc(
 			prAdapter, prTimer->prAlarmFuncPara);

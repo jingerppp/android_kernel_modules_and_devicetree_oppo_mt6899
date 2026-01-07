@@ -790,7 +790,7 @@ void p2pRoleFsmRunEventTimeout(struct ADAPTER *prAdapter,
 			break;
 #if (CFG_SUPPORT_DFS_MASTER == 1)
 		case P2P_ROLE_STATE_DFS_CAC:
-			if (p2pFuncGetRadarDetectMode()) {
+			if (p2pFuncGetRadarDetectMode() == 1) {
 				p2pRoleFsmStateTransition(prAdapter,
 					prP2pRoleFsmInfo,
 					P2P_ROLE_STATE_IDLE);
@@ -803,7 +803,7 @@ void p2pRoleFsmRunEventTimeout(struct ADAPTER *prAdapter,
 					P2P_AP_CAC_MIN_CAC_TIME_MS);
 #endif
 
-			} else {
+			} else if (p2pFuncGetRadarDetectMode() == 2) {
 				p2pRoleFsmStateTransition(prAdapter,
 					prP2pRoleFsmInfo,
 					P2P_ROLE_STATE_IDLE);
@@ -816,6 +816,9 @@ void p2pRoleFsmRunEventTimeout(struct ADAPTER *prAdapter,
 				p2pRoleFsmRunEventStartAP(prAdapter,
 					(struct MSG_HDR *)
 					&prP2pConnReqInfo->rMsgStartAp);
+			} else {
+				DBGLOG(P2P, WARN, "Ignore with radar mode %u\n",
+				       p2pFuncGetRadarDetectMode());
 			}
 			break;
 #endif
@@ -874,29 +877,6 @@ p2pRoleFsmDeauthCompleteImpl(struct ADAPTER *prAdapter,
 
 	if (!prP2PInfo) {
 		DBGLOG(P2P, ERROR, "prP2PInfo shouldn't be NULL!\n");
-		return;
-	}
-
-	/*
-	 * After EAP exchange, GO/GC will disconnect
-	 * and re-connect in short time.
-	 * GC's new station record will be removed unexpectedly at GO's side
-	 * if new GC's connection happens
-	 * when previous GO's disconnection flow is
-	 * processing. 4-way handshake will NOT be triggered.
-	 */
-	if ((prStaRec->eAuthAssocState == AAA_STATE_SEND_AUTH2 ||
-			prStaRec->eAuthAssocState == AAA_STATE_SEND_ASSOC2) &&
-		(prP2pBssInfo->eCurrentOPMode == OP_MODE_ACCESS_POINT) &&
-		(p2pFuncIsAPMode(prAdapter->rWifiVar
-		.prP2PConnSettings[prP2pBssInfo->u4PrivateData]) == FALSE)) {
-		DBGLOG(P2P, WARN,
-			"Skip deauth tx done since AAA fsm is in progress.\n");
-		return;
-	} else if (prStaRec->eAuthAssocState == SAA_STATE_SEND_AUTH1 ||
-		prStaRec->eAuthAssocState == SAA_STATE_SEND_ASSOC1) {
-		DBGLOG(P2P, WARN,
-			"Skip deauth tx done since SAA fsm is in progress.\n");
 		return;
 	}
 
@@ -1626,6 +1606,7 @@ void p2pRoleFsmRunEventPreStartAP(struct ADAPTER *prAdapter,
 		memcpy(&prP2pConnReqInfo->rMsgStartAp,
 			prMsgHdr,
 			sizeof(struct MSG_P2P_START_AP));
+		p2pFuncSetRadarDetectMode(2);
 		kalP2pPreStartRdd(prAdapter->prGlueInfo,
 			prP2pStartAPMsg->ucRoleIdx,
 			ucChannelNum,
@@ -2207,17 +2188,16 @@ void p2pRoleFsmRunEventStartCac(struct ADAPTER *prAdapter,
 		(struct P2P_CONNECTION_REQ_INFO *) NULL;
 	struct P2P_SPECIFIC_BSS_INFO *prP2pSpecificBssInfo =
 		(struct P2P_SPECIFIC_BSS_INFO *) NULL;
+	struct WIFI_VAR *prWifiVar;
 
 	prP2pDfsCacMsg = (struct MSG_P2P_DFS_CAC *) prMsgHdr;
 
-	prP2pRoleFsmInfo =
-		P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prAdapter,
+	prP2pRoleFsmInfo = P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prAdapter,
 			prP2pDfsCacMsg->ucRoleIdx);
 
+	prWifiVar = &prAdapter->rWifiVar;
 
-	DBGLOG(P2P, TRACE,
-		"with Role(%d)\n",
-		prP2pDfsCacMsg->ucRoleIdx);
+	DBGLOG(P2P, TRACE, "with Role(%d)\n", prP2pDfsCacMsg->ucRoleIdx);
 
 	if (!prP2pRoleFsmInfo) {
 		DBGLOG(P2P, ERROR,
@@ -2225,6 +2205,20 @@ void p2pRoleFsmRunEventStartCac(struct ADAPTER *prAdapter,
 			prP2pDfsCacMsg->ucRoleIdx);
 		cnmMemFree(prAdapter, prMsgHdr);
 		return;
+	}
+
+	p2pFuncSetRadarDetectMode(1);
+	p2pFuncResetRadarDetectCnt();
+
+	prWifiVar->u4ByPassCacTimeBackup = prWifiVar->u4ByPassCacTime;
+	prWifiVar->u4ByPassCacTime = 0;
+
+	if (prWifiVar->u4ByPassCacTime) {
+		p2pFuncEnableManualCac();
+		p2pFuncSetDriverCacTime(prWifiVar->u4ByPassCacTime);
+	} else {
+		p2pFuncDisableManualCac();
+		p2pFuncSetDriverCacTime(prWifiVar->u4ByPassCacTime);
 	}
 
 	prP2pConnReqInfo = &(prP2pRoleFsmInfo->rConnReqInfo);
@@ -2247,6 +2241,7 @@ void p2pRoleFsmRunEventStopCac(struct ADAPTER *prAdapter,
 		(struct P2P_ROLE_FSM_INFO *) NULL;
 	struct MSG_P2P_DFS_CAC *prP2pDfsCacMsg =
 		(struct MSG_P2P_DFS_CAC *) NULL;
+	struct WIFI_VAR *prWifiVar;
 
 	prP2pDfsCacMsg = (struct MSG_P2P_DFS_CAC *) prMsgHdr;
 
@@ -2254,6 +2249,7 @@ void p2pRoleFsmRunEventStopCac(struct ADAPTER *prAdapter,
 		P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prAdapter,
 			prP2pDfsCacMsg->ucRoleIdx);
 
+	prWifiVar = &prAdapter->rWifiVar;
 
 	DBGLOG(P2P, TRACE,
 		"with Role(%d)\n",
@@ -2272,6 +2268,18 @@ void p2pRoleFsmRunEventStopCac(struct ADAPTER *prAdapter,
 		P2P_ROLE_STATE_IDLE);
 #endif
 	p2pRoleFsmRunEventDfsShutDown(prAdapter, prP2pRoleFsmInfo);
+
+	prWifiVar->u4ByPassCacTime = prWifiVar->u4ByPassCacTimeBackup;
+
+	if (prWifiVar->u4ByPassCacTime) {
+		p2pFuncEnableManualCac();
+		p2pFuncSetDriverCacTime(prWifiVar->u4ByPassCacTime);
+	} else {
+		p2pFuncDisableManualCac();
+		p2pFuncSetDriverCacTime(prWifiVar->u4ByPassCacTime);
+	}
+	p2pFuncSetRadarDetectMode(0);
+
 	cnmMemFree(prAdapter, prMsgHdr);
 }
 
@@ -2398,7 +2406,6 @@ void p2pRoleFsmRunEventRadarDet(struct ADAPTER *prAdapter,
 	struct P2P_CONNECTION_REQ_INFO *prP2pConnReqInfo =
 		(struct P2P_CONNECTION_REQ_INFO *) NULL;
 
-
 	DBGLOG(P2P, INFO, "p2pRoleFsmRunEventRadarDet\n");
 
 	prMsgP2pRddDetMsg = (struct MSG_P2P_RADAR_DETECT *) prMsgHdr;
@@ -2429,7 +2436,7 @@ void p2pRoleFsmRunEventRadarDet(struct ADAPTER *prAdapter,
 		goto error;
 	}
 
-	if (p2pFuncGetRadarDetectMode()) {
+	if (p2pFuncGetRadarDetectMode() == 1) {
 		DBGLOG(P2P, INFO,
 			"p2pRoleFsmRunEventRadarDet: Ignore radar event\n");
 		p2pFuncAddRadarDetectCnt();
@@ -2438,7 +2445,7 @@ void p2pRoleFsmRunEventRadarDet(struct ADAPTER *prAdapter,
 			p2pFuncSetDfsState(DFS_STATE_CHECKING);
 		else
 			p2pFuncSetDfsState(DFS_STATE_ACTIVE);
-	} else {
+	} else if (p2pFuncGetRadarDetectMode() == 2) {
 		uint8_t ucNumOfChannel;
 		uint8_t ch_idx = 0;
 		uint8_t ucChannelNum = 36;
@@ -2535,6 +2542,9 @@ void p2pRoleFsmRunEventRadarDet(struct ADAPTER *prAdapter,
 				(struct MSG_HDR *)
 				&prP2pConnReqInfo->rMsgStartAp);
 		}
+	} else {
+		DBGLOG(P2P, WARN, "Ignore with radar mode %u\n",
+		       p2pFuncGetRadarDetectMode());
 	}
 
 error:
@@ -4177,6 +4187,12 @@ p2pRoleFsmRunEventChnlGrant(struct ADAPTER *prAdapter,
 
 #if (CFG_SUPPORT_DFS_MASTER == 1)
 		case P2P_ROLE_STATE_DFS_CAC:
+			if (!p2pFuncGetRadarDetectMode()) {
+				DBGLOG(P2P, WARN, "Ignore with radar mode %u\n",
+				       p2pFuncGetRadarDetectMode());
+				break;
+			}
+
 			rlmDomainSetDfsDbdcBand(prMsgChGrant->eDBDCBand);
 
 			if (prMsgChGrant->ucBssIndex < (MAX_BSSID_NUM + 1)) {

@@ -7787,7 +7787,7 @@ static int oplus_plat_ufcs_event_notifier_call(struct notifier_block *nb, unsign
 			schedule_delayed_work(&chip->ufcs_restart_timeout_work,
 					msecs_to_jiffies(UFCS_RESTART_TIMEOUT_MS));
 		}
-		if (v != NULL && (*(int *)v == UFCS_NOTIFY_UFCS_RESET_NOTIRY)) {
+		if (v != NULL && (*(int *)v == UFCS_NOTIFY_UFCS_RESET_NOTIFY)) {
 			chip->subsys_reset_ufcs = true;
 			schedule_delayed_work(&chip->ufcs_subsys_reset_work,
 					msecs_to_jiffies(UFCS_RESET_MS));

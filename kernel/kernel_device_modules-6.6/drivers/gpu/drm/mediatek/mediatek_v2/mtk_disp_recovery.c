@@ -492,14 +492,6 @@ static int mtk_drm_esd_check(struct drm_crtc *crtc)
 		goto done;
 	}
 
-	if (((struct mtk_crtc_state*)to_mtk_crtc_state(crtc->state))->prop_val[CRTC_PROP_DOZE_ACTIVE]
-			|| oplus_ofp_get_aod_state()
-			|| oplus_ofp_need_to_skip_esd_check_after_aod_off()
-			|| atomic_read(&esd_pending)) {
-		pr_err("[esd]%s Panel is not normal state, skip esd check!\n", __func__);
-		goto done;
-	}
-
 	/* Check panel EINT */
 	mtk_drm_trace_begin("esd_check:%d-%d", panel_ext->params->cust_esd_check, esd_ctx->chk_mode);
 	if (panel_ext->params->cust_esd_check == 0 &&
@@ -621,7 +613,10 @@ static int mtk_drm_esd_recover(struct drm_crtc *crtc)
 
 	mtk_crtc_hw_block_ready(crtc);
 
-	skip_refresh = mtk_crtc->is_mml || mtk_crtc->is_mml_dl || mtk_crtc->skip_check_trigger;
+	if (priv->data->mmsys_id == MMSYS_MT6899)
+		skip_refresh = mtk_crtc->is_mml_dl || mtk_crtc->skip_check_trigger;
+	else
+		skip_refresh = mtk_crtc->is_mml || mtk_crtc->is_mml_dl || mtk_crtc->skip_check_trigger;
 	if (mtk_crtc_is_frame_trigger_mode(crtc) && !skip_refresh) {
 		struct cmdq_pkt *cmdq_handle;
 
@@ -918,6 +913,7 @@ static int mtk_drm_esd_check_worker_kthread(void *data)
 				time_gap = ktime_to_us(ktime_sub(ktime_get(), panel_ext->funcs->oplus_get_doze_disable_time()));
 				if (time_gap <= 50000) {
 					DDPINFO("[ESD] Panel in aod state, skip esd check!\n");
+					del_timer_sync(&esd_ctx->esd_timer);
 					continue;
 				}
 			}

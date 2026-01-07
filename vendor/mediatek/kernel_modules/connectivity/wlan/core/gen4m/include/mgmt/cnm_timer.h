@@ -97,7 +97,7 @@ struct TIMER {
 		 */
 		struct {
 			/* QueEntry MUST at the beginning of struct */
-			struct QUE_ENTRY rHrtimeoutQueEntry;
+			struct LINK_ENTRY rHrtimeoutLinkEntry;
 			struct hrtimer rHrtimer;
 			struct ADAPTER *prHrAdapter;
 			PFN_MGMT_TIMEOUT_FUNC pfHrtimeoutFunc;
@@ -110,7 +110,7 @@ struct TIMER {
 		 */
 		struct {
 			/* QueEntry MUST at the beginning of struct */
-			struct QUE_ENTRY rAlarmTimeoutQueEntry;
+			struct LINK_ENTRY rAlarmTimeoutLinkEntry;
 			struct alarm rAlarmTimer;
 			struct ADAPTER *prAlarmAdapter;
 			PFN_MGMT_TIMEOUT_FUNC pfAlarmTimeoutFunc;
@@ -272,11 +272,13 @@ static __KAL_INLINE__ int32_t timerPendingTimer(struct TIMER *prTimer)
 	switch (prTimer->eTimerType) {
 #if CFG_SUPPORT_HRTIMER
 	case TIMER_HRTIMER:
-		return prTimer->rLinkEntry.prNext != NULL;
+		return prTimer->rLinkEntry.prNext != NULL ||
+			prTimer->rHrtimeoutLinkEntry.prNext != NULL;
 #endif
 #if CFG_SUPPORT_ALARMTIMER
 	case TIMER_ALARMTIMER:
-		return prTimer->rLinkEntry.prNext != NULL;
+		return prTimer->rLinkEntry.prNext != NULL ||
+			prTimer->rAlarmTimeoutLinkEntry.prNext != NULL;
 #endif
 	/* Legacy Timer List */
 	default:

@@ -299,11 +299,21 @@ struct LINK_MGMT {
  */
 #define LINK_REMOVE_KNOWN_ENTRY(prLink, prEntry) \
 	{ \
-	    ASSERT(prLink); \
-	    ASSERT(prEntry); \
-	    linkDel((struct LINK_ENTRY *)prEntry); \
-	    ((prLink)->u4NumElem)--; \
+		ASSERT(prLink); \
+		ASSERT(prEntry); \
+		linkDel((struct LINK_ENTRY *)prEntry); \
+		((prLink)->u4NumElem)--; \
 	}
+
+#define LINK_TRY_REMOVE_ENTRY(prLink, prEntry) \
+	do { \
+		ASSERT(prLink); \
+		ASSERT(prEntry); \
+		if (((struct LINK_ENTRY *)prEntry)->prNext == NULL) \
+			break; \
+		linkDel((struct LINK_ENTRY *)prEntry); \
+		((prLink)->u4NumElem)--; \
+	} while (0)
 
 /* Merge prSrcLink to prDstLink and put prSrcLink ahead of prDstLink */
 /* Check if the LINK is VALID first */

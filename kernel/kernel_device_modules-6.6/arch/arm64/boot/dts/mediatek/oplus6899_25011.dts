@@ -25,8 +25,8 @@
 #include "mediatek/oplus-display/mt6899-whoopass-25011-display-overlay.dtsi"
 /* #endif */
 
-/* Add for ZhuqueC1 pt device-tree */
-#include "mediatek/oplus_pt_24071.dtsi"
+/* Add for WhoppassC1 pt device-tree */
+#include "mediatek/oplus_pt_25011.dtsi"
 /* #endif */
 
 &odm {

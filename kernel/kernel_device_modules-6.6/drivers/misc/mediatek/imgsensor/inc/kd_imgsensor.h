@@ -1751,6 +1751,8 @@
 #define SENSOR_ID_OFFSET_WHOOPASSC1                        0x5011
 #define WHOOPASSC1MAIN_SENSOR_ID                           0x6B86     /* (0x1B75 + SENSOR_ID_OFFSET_WHOOPASSC1) */
 #define SENSOR_DRVNAME_WHOOPASSC1MAIN_MIPI_RAW             "whoopassc1main_mipi_raw"
+#define WHOOPASSC1MAIN2_SENSOR_ID                          0x6B87     /* (0x1B76 + SENSOR_ID_OFFSET_WHOOPASSC1) */
+#define SENSOR_DRVNAME_WHOOPASSC1MAIN2_MIPI_RAW            "whoopassc1main2_mipi_raw"
 #define WHOOPASSC1WIDE_SENSOR_ID                           0x5126     /* (0x0115 + SENSOR_ID_OFFSET_WHOOPASSC1) */
 #define SENSOR_DRVNAME_WHOOPASSC1WIDE_MIPI_RAW             "whoopassc1wide_mipi_raw"
 #define SENSOR_DRVNAME_WHOOPASSC1WIDE2_MIPI_RAW             "whoopassc1wide2_mipi_raw"
@@ -1762,6 +1764,8 @@
 #define SENSOR_ID_OFFSET_WHOOPASSS1                        0x5235
 #define WHOOPASSS1MAIN_SENSOR_ID                           0x6DAA     /* (0x1B75 + SENSOR_ID_OFFSET_WHOOPASSS1) */
 #define SENSOR_DRVNAME_WHOOPASSS1MAIN_MIPI_RAW             "whoopasss1main_mipi_raw"
+#define WHOOPASSS1MAIN2_SENSOR_ID                          0x6DAB     /* (0x1B76 + SENSOR_ID_OFFSET_WHOOPASSS1) */
+#define SENSOR_DRVNAME_WHOOPASSS1MAIN2_MIPI_RAW            "whoopasss1main2_mipi_raw"
 #define WHOOPASSS1WIDE_SENSOR_ID                           0x534A     /* (0x0115 + SENSOR_ID_OFFSET_WHOOPASSS1) */
 #define SENSOR_DRVNAME_WHOOPASSS1WIDE_MIPI_RAW             "whoopasss1wide_mipi_raw"
 #define WHOOPASSS1TELE_SENSOR_ID                           0x8B1B     /* (0x38E5 + 1 + SENSOR_ID_OFFSET_WHOOPASSS1) */

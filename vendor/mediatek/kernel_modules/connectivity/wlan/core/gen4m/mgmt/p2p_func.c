@@ -4856,6 +4856,14 @@ p2pFuncValidateProbeReq(struct ADAPTER *prAdapter,
 				prAdapter->prGlueInfo,
 				prSwRfb, fgIsDevInterface, ucRoleIdx,
 				MLD_LINK_ID_NONE);
+		} else {
+			DBGLOG(P2P, WARN,
+			       "rx filter unmatch, IsDevIface=%u, ApplyDevFilter=%u, filter=0x%x\n",
+			       fgIsDevInterface,
+			       fgApplyp2PDevFilter,
+			       fgApplyp2PDevFilter ?
+					prAdapter->u4OsPacketFilter :
+					prP2pRoleFsmInfo->u4P2pPacketFilter);
 		}
 
 	} while (FALSE);
@@ -6037,7 +6045,7 @@ void p2pFuncUpdateMgmtFrameRegister(struct ADAPTER *prAdapter,
 				FALSE,
 				&u4OsFilter,
 				sizeof(u4OsFilter));
-			DBGLOG(P2P, TRACE,
+			DBGLOG(P2P, INFO,
 				"P2P Set PACKET filter:0x%x\n",
 				prAdapter->u4OsPacketFilter);
 		}

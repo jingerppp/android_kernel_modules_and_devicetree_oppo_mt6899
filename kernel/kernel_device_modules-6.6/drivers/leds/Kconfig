@@ -84,4 +84,9 @@ source "$(KCONFIG_EXT_PREFIX)drivers/leds/flash/Kconfig"
 
 source "$(KCONFIG_EXT_PREFIX)drivers/leds/fan/Kconfig"
 
+source "$(KCONFIG_EXT_PREFIX)drivers/leds/aw2027/Kconfig"
+
+comment "aw22xxx LED drivers"
+source "$(KCONFIG_EXT_PREFIX)drivers/leds/aw22xxx/Kconfig"
+
 endif # NEW_LEDS

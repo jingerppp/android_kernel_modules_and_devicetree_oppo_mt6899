@@ -315,6 +315,9 @@ struct mtk_cam_device {
 	//struct platform_device *scp_pdev; /* only for scp case? */
 	phandle rproc_phandle;
 	struct rproc *rproc_handle;
+	#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	struct mutex rproc_lock;
+	#endif
 
 	struct mutex ccu_lock;
 	int ccu_use_cnt;

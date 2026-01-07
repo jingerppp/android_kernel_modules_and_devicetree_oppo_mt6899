@@ -199,7 +199,7 @@ do { \
 	RSNCIPHER2BIT(GCMP);
 	default:
 		DBGLOG(REQ, WARN, "invalid Cipher (0x%x)\n", cipher);
-		return BIT(0);
+		return 0;
 	}
 }
 
@@ -236,7 +236,7 @@ do { \
 	RSNAKM2BIT(FT_SAE_EXT_KEY);
 	default:
 		DBGLOG(REQ, WARN, "invalid Akm Suite (0x%x)\n", akm);
-		return BIT(0);
+		return 0;
 	}
 }
 
@@ -384,7 +384,7 @@ u_int8_t rsnParseRsnxIE(struct ADAPTER *prAdapter,
 		uint8_t ucCap = *cp;
 
 		u2Cap = (uint16_t) ucCap & 0x00ff;
-	} else if (prInfoElem->ucLength == 2) {
+	} else if (prInfoElem->ucLength >= 2) {
 		WLAN_GET_FIELD_16(cp, &u2Cap);
 	}
 	prRsnxeInfo->u2Cap = u2Cap;
@@ -411,6 +411,9 @@ u_int8_t rsnParseRsnIE(struct ADAPTER *prAdapter,
 		       struct RSN_INFO_ELEM *prInfoElem,
 		       struct RSN_INFO *prRsnInfo)
 {
+	/*FC-5.2.3.3 has max suites number of 55 by testBed AP*/
+#define MAX_SUITE_COUNT 55
+
 	uint32_t i;
 	int32_t i4RemainRsnIeLen;
 	uint16_t u2Version;
@@ -423,6 +426,8 @@ u_int8_t rsnParseRsnIE(struct ADAPTER *prAdapter,
 	uint16_t u2PmkidCount = 0;
 	uint32_t u4GroupMgmtSuite = RSN_CIPHER_SUITE_BIP_CMAC_128;
 	uint8_t *cp;
+	uint32_t u4AuthKeyMgtSuite = 0;
+	uint32_t u4PairwiseKeyCipherSuite = 0;
 
 	/* Verify the length of the RSN IE. */
 	if (prInfoElem->ucLength < 2) {
@@ -602,21 +607,34 @@ u_int8_t rsnParseRsnIE(struct ADAPTER *prAdapter,
 		/* The information about the pairwise key cipher suites
 		 * is present.
 		 */
-		if (u2PairSuiteCount > MAX_NUM_SUPPORTED_CIPHER_SUITES)
-			u2PairSuiteCount = MAX_NUM_SUPPORTED_CIPHER_SUITES;
-
-		prRsnInfo->u4PairwiseKeyCipherSuiteCount =
-		    (uint32_t) u2PairSuiteCount;
+		prRsnInfo->u4PairwiseKeyCipherSuiteCount = 0;
+		if (u2PairSuiteCount > MAX_SUITE_COUNT) {
+			u2PairSuiteCount = MAX_SUITE_COUNT;
+			DBGLOG(RSN, WARN,
+				"only parse %d pairwise suite\n",
+				MAX_SUITE_COUNT);
+		}
 
 		for (i = 0; i < (uint32_t) u2PairSuiteCount; i++) {
+			if (prRsnInfo->u4PairwiseKeyCipherSuiteCount >=
+				MAX_NUM_SUPPORTED_CIPHER_SUITES)
+				break;
 			WLAN_GET_FIELD_32(pucPairSuite,
-					  &prRsnInfo->au4PairwiseKeyCipherSuite
-					  [i]);
+					  &u4PairwiseKeyCipherSuite);
 			pucPairSuite += 4;
 
-			DBGLOG(RSN, LOUD,
-			   "RSN: pairwise key cipher suite [%d]: 0x%x\n", i,
-			   SWAP32(prRsnInfo->au4PairwiseKeyCipherSuite[i]));
+			if (rsnCipherToBit(u4PairwiseKeyCipherSuite)) {
+				DBGLOG(RSN, LOUD,
+					"RSN: pairwise [%d]: 0x%x\n",
+					i, SWAP32(u4PairwiseKeyCipherSuite));
+				prRsnInfo->au4PairwiseKeyCipherSuite[prRsnInfo
+					->u4PairwiseKeyCipherSuiteCount] =
+					u4PairwiseKeyCipherSuite;
+				prRsnInfo->u4PairwiseKeyCipherSuiteCount++;
+			} else
+				DBGLOG(RSN, INFO,
+					"RSN: Invalid pairwise [%d]: 0x%x\n",
+					i, SWAP32(u4PairwiseKeyCipherSuite));
 		}
 	} else {
 		/* The information about the pairwise key cipher suites
@@ -634,19 +652,34 @@ u_int8_t rsnParseRsnIE(struct ADAPTER *prAdapter,
 		/* The information about the authentication and
 		 * key management suites is present.
 		 */
-		if (u2AuthSuiteCount > MAX_NUM_SUPPORTED_AKM_SUITES)
-			u2AuthSuiteCount = MAX_NUM_SUPPORTED_AKM_SUITES;
-
-		prRsnInfo->u4AuthKeyMgtSuiteCount = (uint32_t)
-		    u2AuthSuiteCount;
+		prRsnInfo->u4AuthKeyMgtSuiteCount = 0;
+		if (u2AuthSuiteCount > MAX_SUITE_COUNT) {
+			u2AuthSuiteCount = MAX_SUITE_COUNT;
+			DBGLOG(RSN, WARN,
+				"only parse %d AKM suite\n",
+				MAX_SUITE_COUNT);
+		}
 
 		for (i = 0; i < (uint32_t) u2AuthSuiteCount; i++) {
+			if (prRsnInfo->u4AuthKeyMgtSuiteCount >=
+				MAX_NUM_SUPPORTED_AKM_SUITES)
+				break;
+
 			WLAN_GET_FIELD_32(pucAuthSuite,
-					  &prRsnInfo->au4AuthKeyMgtSuite[i]);
+					  &u4AuthKeyMgtSuite);
 			pucAuthSuite += 4;
 
-			DBGLOG(RSN, LOUD, "RSN: AKM suite [%d]: 0x%x\n", i,
-				SWAP32(prRsnInfo->au4AuthKeyMgtSuite[i]));
+			if (rsnKeyMgmtToBit(u4AuthKeyMgtSuite)) {
+				DBGLOG(RSN, LOUD, "RSN: AKM [%d]: 0x%x\n",
+					i, SWAP32(u4AuthKeyMgtSuite));
+				prRsnInfo->au4AuthKeyMgtSuite[
+					prRsnInfo->u4AuthKeyMgtSuiteCount] =
+					u4AuthKeyMgtSuite;
+				prRsnInfo->u4AuthKeyMgtSuiteCount++;
+			} else
+				DBGLOG(RSN, INFO,
+					"RSN: Invalid AKM [%d]: 0x%x\n",
+					i, SWAP32(u4AuthKeyMgtSuite));
 		}
 	} else {
 		/* The information about the authentication and
@@ -658,6 +691,16 @@ u_int8_t rsnParseRsnIE(struct ADAPTER *prAdapter,
 
 		DBGLOG(RSN, LOUD, "RSN: AKM suite: 0x%x (default)\n",
 			SWAP32(prRsnInfo->au4AuthKeyMgtSuite[0]));
+	}
+
+	if (prRsnInfo->u4AuthKeyMgtSuiteCount == 0) {
+		DBGLOG(RSN, WARN,
+			"Fail to parse AKM in RSN IE\n");
+	}
+
+	if (prRsnInfo->u4PairwiseKeyCipherSuiteCount == 0) {
+		DBGLOG(RSN, WARN,
+			"Fail to parse cipher in RSN IE\n");
 	}
 
 	prRsnInfo->u2RsnCap = u2Cap;
@@ -988,6 +1031,11 @@ u_int8_t rsnIsSuitableBSS(struct ADAPTER *prAdapter,
 
 	/* check pairwise */
 	c = prBssRsnInfo->u4PairwiseKeyCipherSuiteCount;
+	if (c == 0) {
+		DBGLOG(RSN, WARN, "No PTK found\n");
+		return FALSE;
+	}
+
 	for (i = 0; i < c; i++) {
 		k = prBssRsnInfo->au4PairwiseKeyCipherSuite[i];
 		if (rsnSearchSupportedCipher(prAdapter, k, ucBssIndex)) {
@@ -1006,6 +1054,11 @@ u_int8_t rsnIsSuitableBSS(struct ADAPTER *prAdapter,
 
 	/* check akm */
 	c = prBssRsnInfo->u4AuthKeyMgtSuiteCount;
+	if (c == 0) {
+		DBGLOG(RSN, WARN, "No AuthKey found\n");
+		return FALSE;
+	}
+
 	for (i = 0; i < c; i++) {
 		k = prBssRsnInfo->au4AuthKeyMgtSuite[i];
 		if (rsnSearchAKMSuite(prAdapter, k, ucBssIndex)) {
@@ -1194,12 +1247,24 @@ void rsnMatchCipherSuite(struct RSN_INFO *prBssRsnInfo,
 			/* TODO: WTBL cipher filed cannot
 			* 1-1 mapping to spec cipher suite number
 			*/
-			if (u4Cipher == RSN_CIPHER_SUITE_GCMP_256 ||
-			    u4Cipher == RSN_CIPHER_SUITE_GCMP)
+			if (u4Cipher == RSN_CIPHER_SUITE_GCMP_256)
 				u4PairwiseCipher = u4Cipher;
 		}
 		if (u4PairwiseCipher != 0)
 			break;
+
+		for (i = 0; i < prBssRsnInfo->u4PairwiseKeyCipherSuiteCount;
+			i++) {
+			u4Cipher = prBssRsnInfo->au4PairwiseKeyCipherSuite[i];
+			/* TODO: WTBL cipher filed cannot
+			 * 1-1 mapping to spec cipher suite number
+			 */
+			if (u4Cipher == RSN_CIPHER_SUITE_GCMP)
+				u4PairwiseCipher = u4Cipher;
+		}
+		if (u4PairwiseCipher != 0)
+			break;
+
 		for (i = 0; i < prBssRsnInfo->u4PairwiseKeyCipherSuiteCount;
 			i++) {
 			u4Cipher = prBssRsnInfo->au4PairwiseKeyCipherSuite[i];

@@ -110,6 +110,8 @@ int aw37004_camera_power_up(int out_iotype)
 		mutex_lock(&aw37004_mutex);
 		if (is_project(23035) || is_project(23321)){
 			ret = aw37004_i2c_write(camera_chip, aw37004_on_config[OUT_DVDD1].reg, 0x54);//bit0
+		} else if (is_project(23707) || is_project(23709)) {
+			ret = aw37004_i2c_write(camera_chip, aw37004_on_config[OUT_DVDD1].reg, 0x4B);
 		} else {
 			ret = aw37004_i2c_write(camera_chip, aw37004_on_config[OUT_DVDD1].reg, 0x55);//bit0
 		}

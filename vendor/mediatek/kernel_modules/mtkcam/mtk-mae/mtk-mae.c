@@ -441,7 +441,10 @@ ERROR_DMA_BUF_ATTACH_FAIL:
 		return ret;
 
 ERROR_DMA_BUF_VMAP_FAIL:
-	dma_buf_put(info->dmabuf);
+	if (!IS_ERR(info->dmabuf) && info->dmabuf) {
+		dma_buf_put(info->dmabuf);
+		info->dmabuf = NULL;
+	}
 
 	return ret;
 }
@@ -970,7 +973,10 @@ ERROR_DMA_BUF_MAP_ATTACHMENT_FAIL:
 	dma_buf_detach(buf_info->dmabuf, buf_info->attach);
 
 ERROR_DMA_BUF_ATTACH_FAIL:
-	dma_buf_put(buf_info->dmabuf);
+	if (!IS_ERR(buf_info->dmabuf) && buf_info->dmabuf) {
+		dma_buf_put(buf_info->dmabuf);
+		buf_info->dmabuf = NULL;
+	}
 
 	mae_dev->mae_stream_count--;
 
@@ -1020,8 +1026,10 @@ static void mtk_mae_umap_detach(struct mtk_mae_dev *mae_dev,
 		info->is_attach = false;
 	}
 
-	if (!IS_ERR(info->dmabuf) && info->dmabuf)
+	if (!IS_ERR(info->dmabuf) && info->dmabuf) {
 		dma_buf_put(info->dmabuf);
+		info->dmabuf = NULL;
+	}
 
 	info->kva = 0;
 	info->pa = 0;

@@ -2296,7 +2296,7 @@
 		oplus-adfr-test-te-gpios = <&pio 103 0>;
 		/* OFP config */
 		oplus,ofp-fp-type = <0x10>;
-		oplus,ofp-longrui-aod-config = <0x06>;
+		oplus,ofp-longrui-aod-config = <0x0E>;
 		/* ext_params */
 		oplus,panel-type = <0>;
 		oplus,keep_ulps = <1>;

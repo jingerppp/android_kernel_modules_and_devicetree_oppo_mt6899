@@ -293,6 +293,8 @@ static const unsigned char tfa986x_fb_regs[] = {
 	TFA9865_SYS_CONTROL1,
 	TFA9865_SYS_CONTROL2,
 	TFA9865_CLOCK_CONTROL,
+	TFA9865_STATUS_FLAGS0,
+	TFA9865_STATUS_FLAGS1,
 	TFA9865_STATUS_FLAGS2,
 	TFA9865_BATTERY_VOLTAGE,
 	TFA9865_TEMPERATURE,
@@ -366,6 +368,7 @@ static int tfa98xx_check_status_reg(struct tfa98xx *tfa98xx)
 	const unsigned char *ptr_fb_regs = NULL;
 	int err_info_size = 0;
 	int fb_reg_size = 0;
+	int flag_need_clear = 0;
 
 	if (((tfa98xx->rev & 0xFF) == 0x65) || ((tfa98xx->rev & 0xFF) == 0x66)) {
 		reg_val = 0;
@@ -374,7 +377,7 @@ static int tfa98xx_check_status_reg(struct tfa98xx *tfa98xx)
 		ptr_fb_regs = tfa986x_fb_regs;
 		fb_reg_size = ARRAY_SIZE(tfa986x_fb_regs);
 
-		pr_debug("%s, %d, err_info_size = %d", __func__, __LINE__, err_info_size);
+		pr_debug("%s, %d, err_info_size = %d, fb_reg_size = %d", __func__, __LINE__, err_info_size, fb_reg_size);
 
 		for (info_idx = 0; info_idx < sizeof(tfa98xx_check_info) / sizeof(tfa98xx_check_info[0]); info_idx++) {
 			if (tfa98xx_check_info[info_idx].device_revision == (tfa98xx->rev & 0xFF))
@@ -431,6 +434,10 @@ static int tfa98xx_check_status_reg(struct tfa98xx *tfa98xx)
 
 				if ((status_reg_value[i] & tfa98xx_check_info[info_idx].reg_checked_mask[i]) != tfa98xx_check_info[info_idx].expected_value[i]) {
 					flag = 1;
+
+					if (tfa98xx_check_info[info_idx].reg_checked_addr[i] == TFA98XX_STATUS_FLAGS0) {
+						flag_need_clear = 1;
+					}
 					break;
 				}
 			}
@@ -461,6 +468,16 @@ static int tfa98xx_check_status_reg(struct tfa98xx *tfa98xx)
 					}
 				}
 				SetFdBuf(info, "),");
+			}
+
+			if (flag_need_clear != 0) {
+				/* Clear Register STATUS_FLAGS0 bit 1~4 */
+				err = tfa98xx_write_register16(tfa98xx->tfa, TFA98XX_STATUS_FLAGS0, 0x1E);
+				if (err != Tfa98xx_Error_Ok) {
+					pr_err("%s, tfa98xx_write_register16 failed, addr = %#x, value = 0x%04X",
+						__func__,
+						TFA98XX_STATUS_FLAGS0, 0x1E);
+				}
 			}
 		} else {
 			SetFdBuf(info, "TFA98%x SPK%d: failed to read status regs, error=%d,", \

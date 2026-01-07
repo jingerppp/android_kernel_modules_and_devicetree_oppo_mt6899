@@ -1724,9 +1724,9 @@ static bool mml_check_dumpsrv(enum dump_srv_option buf_opt, struct mml_file_buf 
 }
 #endif	/* CONFIG_MTK_MML_DEBUG */
 
-static void core_taskdone_kt_work(struct kthread_work *work)
+static void core_hardware_done(struct kthread_work *work)
 {
-	struct mml_task *task = container_of(work, struct mml_task, kt_work_done);
+	struct mml_task *task = container_of(work, struct mml_task, kt_work_hwdone);
 	struct mml_frame_config *cfg = task->config;
 	u32 i;
 
@@ -1761,7 +1761,7 @@ static void core_taskdone_kt_work(struct kthread_work *work)
 	}
 #endif
 
-	queue_work(cfg->wq_done, &task->work_done);
+	kthread_queue_work(cfg->ctx_kt_taskdone, &task->kt_work_taskdone);
 	mml_trace_end();
 }
 
@@ -1785,9 +1785,9 @@ static void mml_core_mminfra_disable(struct mml_dev *mml, u32 pipe, struct mml_c
 	mml_clock_unlock(mml);
 }
 
-static void core_taskdone(struct work_struct *work)
+static void core_taskdone(struct kthread_work *work)
 {
-	struct mml_task *task = container_of(work, struct mml_task, work_done);
+	struct mml_task *task = container_of(work, struct mml_task, kt_work_taskdone);
 	struct mml_frame_config *cfg = task->config;
 	const struct mml_topology_path *path = cfg->path[0];
 	u32 *perf, hw_time = 0;
@@ -1883,7 +1883,7 @@ static void core_taskdone_check(struct mml_task *task)
 		mml_mmp(fence_sig, MMPROFILE_FLAG_PULSE, task->job.jobid,
 			mmp_data2_fence(task->fence->context, task->fence->seqno));
 	}
-	kthread_queue_work(cfg->ctx_kt_done, &task->kt_work_done);
+	kthread_queue_work(cfg->ctx_kt_hwdone, &task->kt_work_hwdone);
 }
 
 static void core_taskdone_cb(struct cmdq_cb_data data)
@@ -2246,6 +2246,10 @@ static s32 core_flush(struct mml_task *task, u32 pipe)
 		(unsigned long)task->pkts[pipe]);
 	ret = cmdq_pkt_flush_async(pkt, core_taskdone_cb, (void *)task->pkts[pipe]);
 
+	/* start taskdone thread if necessary after current job flushed */
+	if (cfg->dpc)
+		cmdq_check_thread_complete(tp_clt->chan);
+
 	/* only start at pipe 0 and end at receive both pipe irq */
 	if (pipe == 0)
 		mml_mmp(exec, MMPROFILE_FLAG_START, task->job.jobid, 0);
@@ -2490,8 +2494,8 @@ struct mml_task *mml_core_create_task(u32 jobid)
 	INIT_LIST_HEAD(&task->pipe[1].entry_clt);
 	kthread_init_work(&task->work_config[0], core_config_task_work);
 	kthread_init_work(&task->work_config[1], core_config_pipe1_work);
-	INIT_WORK(&task->work_done, core_taskdone);
-	kthread_init_work(&task->kt_work_done, core_taskdone_kt_work);
+	kthread_init_work(&task->kt_work_hwdone, core_hardware_done);
+	kthread_init_work(&task->kt_work_taskdone, core_taskdone);
 
 	kref_init(&task->ref);
 	task->pipe[0].task = task;
@@ -2524,14 +2528,6 @@ void mml_core_destroy_task(struct mml_task *task)
 	atomic_dec(&mml_task_ref);
 }
 
-static void core_destroy_wq(struct workqueue_struct **wq)
-{
-	if (*wq) {
-		destroy_workqueue(*wq);
-		*wq = NULL;
-	}
-}
-
 void mml_core_init_config(struct mml_frame_config *cfg)
 {
 	INIT_LIST_HEAD(&cfg->entry);
@@ -2540,8 +2536,6 @@ void mml_core_init_config(struct mml_frame_config *cfg)
 	INIT_LIST_HEAD(&cfg->done_tasks);
 	mutex_init(&cfg->pipe_mutex);
 	mutex_init(&cfg->hist_div_mutex);
-	/* create work_thread 0, wait thread */
-	cfg->wq_done = alloc_ordered_workqueue("mml_done", WORK_CPU_UNBOUND | WQ_HIGHPRI);
 }
 
 void mml_core_deinit_config(struct mml_frame_config *cfg)
@@ -2556,8 +2550,6 @@ void mml_core_deinit_config(struct mml_frame_config *cfg)
 			kfree(cfg->cache[pipe].cfg[i].data);
 		destroy_frame_tile(cfg->frame_tile[pipe]);
 	}
-	mml_msg("%s destroy_workqueue %p on ctx %p", __func__, cfg->wq_done, cfg->ctx);
-	core_destroy_wq(&cfg->wq_done);
 }
 
 static void core_update_config(struct mml_frame_config *cfg)

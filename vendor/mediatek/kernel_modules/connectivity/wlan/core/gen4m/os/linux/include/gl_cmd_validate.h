@@ -436,6 +436,11 @@
 
 #define CMD_DBG_DUMP_WFSYS_CPUPCR		"dumpwfsyscpupcr"
 
+#ifdef OPLUS_FEATURE_WIFI_SAP_ACCELERATE
+#define CMD_OPLUS_ENABLE_SAP_ACCELERATE_FUNC "enable_oplus_sap_accelerate"
+#define CMD_OPLUS_DISABLE_SAP_ACCELERATE_FUNC "disable_oplus_sap_accelerate"
+#define CMD_OPLUS_GET_SAP_ACCELERATE_FUNC_STATUS "get_oplus_sap_accelerate_func_status"
+#endif /* OPLUS_FEATURE_WIFI_SAP_ACCELERATE */
 /*****************************************************************************
 *                             D A T A   T Y P E S
 ******************************************************************************

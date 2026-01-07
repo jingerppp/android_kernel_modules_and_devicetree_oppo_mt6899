@@ -89,6 +89,8 @@
     #define BUF_BUF_EN						BIT(0)
     #define BUF_BUF_FIFO_UNDERFLOW_DONT_BLOCK	BIT(4)
 #define DP_BUF_CON1						0x0214
+#define DP_BUF_RESET					0x0218
+	#define BUF_BUF_ENG_RESET				BIT(0)
 #define DP_BUF_RW_TIMES					0x0220
 #define DP_BUF_SODI_HIGH				0x0224
 #define DP_BUF_SODI_LOW					0x0228
@@ -855,6 +857,7 @@ static void mtk_dp_intf_start(struct mtk_ddp_comp *comp,
 	dp_intf_bw = 0;
 
 	mtk_dp_intf_mask(dp_intf, DP_INTSTA, 0xf, 0);
+	mtk_ddp_write_mask(comp, 0x0, DP_BUF_RESET, BUF_BUF_ENG_RESET, handle);
 	mtk_ddp_write_mask(comp, 1,
 		DP_RST, CON_FLD_DP_RST, handle);
 	mtk_ddp_write_mask(comp, 0,
@@ -896,6 +899,7 @@ static void mtk_dp_intf_stop(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
 	irq_underflowsa = 0;
 	irq_tl = 0;
 	dp_intf_bw = 0;
+	mtk_ddp_write_mask(comp, BUF_BUF_ENG_RESET, DP_BUF_RESET, BUF_BUF_ENG_RESET, handle);
 
 	DPTXMSG("%s, stop\n", mtk_dump_comp_str(comp));
 }

@@ -809,8 +809,8 @@ void sched_info_systrace_c(unsigned int cpu, struct task_struct *p)
 	s_info += rt_running * RT_R_MULT_UNIT;
 	s_info += ddl_hint * DDL_ACTIVE_MULT_UNIT;
 	s_info += ddl_task * DDL_TASK_MULT_UNIT;
-	s_info += ((u8)cpumask_bits(&p->cpus_mask)[0]) * AFFINITY_MASK_MULT_UNIT;
-	if (cpumask_weight(&p->cpus_mask) < nr_cpu_ids) {
+	s_info += ((u8)cpumask_bits(p->cpus_ptr)[0]) * AFFINITY_MASK_MULT_UNIT;
+	if (cpumask_weight(p->cpus_ptr) < nr_cpu_ids) {
 		if (ots && likely(test_bit(OTS_STATE_SET_AFFINITY, &ots->state))
 			&& ots->affinity_pid > 0 && ots->affinity_pid < PID_MAX_LIMIT)
 			s_info += ((u64)ots->affinity_pid) * AFFINITY_SET_MULT_UNIT;

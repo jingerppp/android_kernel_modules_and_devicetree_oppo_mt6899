@@ -188,11 +188,12 @@
 			als_buffer_length = <2>;
 			need_gain_cali = <1>;
                         scale_gain = <512>;
+			fifo_sample_time_switch = <1>;
 		};
 		als_panel_P_7_1: als_panel_P_7_1 {
 			status = "okay";
 			device_name = "tcs3720";
-			decision_table_index = <7>;
+			decision_table_index = <12>;
 			support_panel = <12>; // 1-SAMSUNG, 2-BOE, 3-TIANMA, 4-NT36672C, 5-HX83112F, 6-TM, 7-P_3, 8-P_B, 9-TD4377, 10-ILI9883C, 11-FT8057P, 12-P_7
 			gold_cct_3k = <86653 38886 20073 138214 1001 1001>;
 			gold_cct_6k = <55688 42576 25684 119437 1001 1001>;
@@ -200,7 +201,7 @@
 		als_panel_P_3_1: als_panel_P_3_1 {
 			status = "okay";
 			device_name = "tcs3720";
-			decision_table_index = <7>;
+			decision_table_index = <13>;
 			support_panel = <7>; // 1-SAMSUNG, 2-BOE, 3-TIANMA, 4-NT36672C, 5-HX83112F, 6-TM, 7-P_3, 8-P_B, 9-TD4377, 10-ILI9883C, 11-FT8057P, 12-P_7
 			gold_cct_3k = <82797 36181 17772 127535 1001 1001>;
 			gold_cct_6k = <52472 39403 21894 107548 1001 1001>;

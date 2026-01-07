@@ -21,6 +21,10 @@
 
 #define AW36515_WHOOPASSC1_NAME	"aw36515_whoopassc1"
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#include <oplus/oplus_flashlight_notify.h>
+#endif
+
 /* registers definitions */
 #define REG_ENABLE		0x01
 #define REG_LED0_FLASH_BR	0x03
@@ -170,6 +174,14 @@ static int aw36515_whoopassc1_enable_ctrl(struct aw36515_whoopassc1_flash *flash
 		flash_led_mode = aging_led_id;
 	}
 	pr_info("%s: enable:%d, flash_led_mode:%d", __func__, on, flash_led_mode);
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+{
+	int notify_status = on;
+	if(flashlight_cs_notify_init() == 0) {
+		flashlight_notify(FLASHLIGHT_STATUS_TYPE, &notify_status);
+	}
+}
+#endif
 	if (on) {
 		if (flash_led_mode == 0) {
 			rval = regmap_update_bits(aw36515_whoopassc1_flash_data->regmap,

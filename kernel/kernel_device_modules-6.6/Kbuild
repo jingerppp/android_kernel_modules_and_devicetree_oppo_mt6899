@@ -130,6 +130,8 @@ obj-y += drivers/misc/oplus/vibrator/aw8697_haptic/
 
 obj-y += drivers/misc/oplus/vibrator/si_haptic/
 
+obj-y += drivers/misc/oplus/vibrator/oplus_haptic/
+
 obj-y += drivers/misc/oplus/oplus_gpio/
 
 obj-y += drivers/misc/oplus/sim_detect/

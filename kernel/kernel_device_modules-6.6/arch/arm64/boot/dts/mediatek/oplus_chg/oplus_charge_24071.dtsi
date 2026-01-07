@@ -814,6 +814,8 @@
 		oplus,gauge_stuck_jump_support;
 		oplus,gauge_stuck_threshold = <15>;
 		oplus,gauge_stuck_time = <50>;
+
+		oplus_spec,batt_full_time = <300>;
 	};
 
 	oplus_monitor: oplus,monitor {
@@ -940,6 +942,7 @@
 &i2c10 {
 	status = "okay";
 	clock-frequency = <400000>;
+	mediatek,fifo-use-polling;
 	oplus_sc8547d: oplus,sc8547d@6A {
 		status = "okay";
 		compatible = "oplus,sc8547d";

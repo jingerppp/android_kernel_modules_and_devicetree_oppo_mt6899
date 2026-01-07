@@ -1459,7 +1459,7 @@ kalP2PIndicateRxMgmtFrame(struct ADAPTER *prAdapter,
 
 		switch (prWlanHeader->u2FrameCtrl) {
 		case MAC_FRAME_PROBE_REQ:
-			DBGLOG(P2P, TRACE,
+			DBGLOG(P2P, INFO,
 				"RX Probe Req at channel %d ",
 				ucChnlNum);
 			break;

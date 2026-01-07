@@ -61,7 +61,7 @@ static u16 module_flag = 0;
 static kal_uint8 otp_data_checksum[OTP_SIZE] = {0};
 static struct oplus_eeprom_info_struct  oplus_eeprom_info = {0};
 
-static char* sensor_name[] = {SENSOR_DRVNAME_WHOOPASSC1MAIN_MIPI_RAW, SENSOR_DRVNAME_WHOOPASSC2MAIN2_MIPI_RAW};
+static char* sensor_name[] = {SENSOR_DRVNAME_WHOOPASSC1MAIN_MIPI_RAW, SENSOR_DRVNAME_WHOOPASSC2MAIN2_MIPI_RAW, SENSOR_DRVNAME_WHOOPASSC1MAIN2_MIPI_RAW};
 static char* SENSOR_NAME = SENSOR_DRVNAME_WHOOPASSC1MAIN_MIPI_RAW;
 //#define SUBDRV_I2C_BUF_SIZE (256)
 #define MAX_BURST_LEN  (2048)
@@ -90,6 +90,7 @@ static int whoopassc1main_i2c_burst_wr_regs_u16(struct subdrv_ctx *ctx, u16 * li
 static int adapter_i2c_burst_wr_regs_u16(struct subdrv_ctx * ctx,
 		u16 addr, u16 *list, u32 len);
 static bool g_id_from_dts_flag = false;
+static bool IsC1Sensor = false;
 static void get_imgsensor_id_from_dts(struct subdrv_ctx *ctx, u32 *sensor_id);
 
 //////gain
@@ -3145,7 +3146,9 @@ static kal_int32 write_Module_data(struct subdrv_ctx *ctx,
         data_length = pStereodata->dataLength;
         pData = pStereodata->uData;
         if (((pStereodata->uSensorId == WHOOPASSC1MAIN_SENSOR_ID) || (pStereodata->uSensorId == WHOOPASSS1MAIN_SENSOR_ID)
-            || (pStereodata->uSensorId == WHOOPASSC2MAIN_SENSOR_ID) || (pStereodata->uSensorId == WHOOPASSS2MAIN_SENSOR_ID))
+            || (pStereodata->uSensorId == WHOOPASSC1MAIN2_SENSOR_ID) || (pStereodata->uSensorId == WHOOPASSS1MAIN2_SENSOR_ID)
+            || (pStereodata->uSensorId == WHOOPASSC2MAIN_SENSOR_ID) || (pStereodata->uSensorId == WHOOPASSS2MAIN_SENSOR_ID)
+            || (pStereodata->uSensorId == WHOOPASSC2MAIN2_SENSOR_ID) || (pStereodata->uSensorId == WHOOPASSS2MAIN2_SENSOR_ID))
             && (data_length == CALI_DATA_MASTER_LENGTH)
             && ((data_base == WHOOPASSC1MAIN_STEREO_MW_START_ADDR)
                 || (data_base == WHOOPASSC1MAIN_STEREO_MT_START_ADDR)
@@ -3161,7 +3164,9 @@ static kal_int32 write_Module_data(struct subdrv_ctx *ctx,
             LOG_INF("write_Module_data Write end\n");
 
         } else if (((pStereodata->uSensorId == WHOOPASSC1MAIN_SENSOR_ID) || (pStereodata->uSensorId == WHOOPASSS1MAIN_SENSOR_ID)
-            || (pStereodata->uSensorId == WHOOPASSC2MAIN_SENSOR_ID) || (pStereodata->uSensorId == WHOOPASSS2MAIN_SENSOR_ID))
+            || (pStereodata->uSensorId == WHOOPASSC1MAIN2_SENSOR_ID) || (pStereodata->uSensorId == WHOOPASSS1MAIN2_SENSOR_ID)
+            || (pStereodata->uSensorId == WHOOPASSC2MAIN_SENSOR_ID) || (pStereodata->uSensorId == WHOOPASSS2MAIN_SENSOR_ID)
+            || (pStereodata->uSensorId == WHOOPASSC2MAIN2_SENSOR_ID) || (pStereodata->uSensorId == WHOOPASSS2MAIN2_SENSOR_ID))
             && (data_length < AESYNC_DATA_LENGTH_TOTAL)
             && (data_base == WHOOPASSC1MAIN_AESYNC_START_ADDR)) {
             LOG_INF("write main aesync: %x %x %x %x %x %x %x %x\n", pData[0], pData[1],
@@ -3773,10 +3778,18 @@ static void whoopassc1main_get_sensorname(struct subdrv_ctx *ctx){
         BARCODE_flags[i] = read_cmos_eeprom_8(ctx, OTP_BARCODE_ADDR + i);
     }
 	if(BARCODE_flags[0] == 0x37 && BARCODE_flags[1] == 0x33){
-		SENSOR_NAME = sensor_name[1];
+		if (IsC1Sensor) {
+			SENSOR_NAME = sensor_name[2];
+		} else {
+			SENSOR_NAME = sensor_name[1];
+		}
 	} else{
 		if(BG_flag == 0x01){
-			SENSOR_NAME = sensor_name[1];
+			if (IsC1Sensor) {
+				SENSOR_NAME = sensor_name[2];
+			} else {
+				SENSOR_NAME = sensor_name[1];
+			}
 		} else {
 			SENSOR_NAME = sensor_name[0];
 		}
@@ -3818,6 +3831,11 @@ static void get_imgsensor_id_from_dts(struct subdrv_ctx *ctx, u32 *sensor_id) {
 				__func__, i, of_sensor_hal_names[i]);
 		}
 
+		if ((of_sensor_ids[0] == WHOOPASSC1MAIN_SENSOR_ID) || (of_sensor_ids[0] == WHOOPASSS1MAIN_SENSOR_ID)) {
+			IsC1Sensor = true;
+		} else {
+			IsC1Sensor = false;
+		}
 		if (of_sensor_names_cnt && (of_sensor_ids_ret == 0)) {
 			for(index = 0; index < of_sensor_names_cnt; index++) {
 				whoopassc1main_get_sensorname(ctx);
@@ -4703,12 +4721,14 @@ static int whoopassc1main_set_hdr_tri_gain3(struct subdrv_ctx *ctx, u8 *para, u3
 static void update_CTLE(struct subdrv_ctx *ctx)
 {
 	for (int scenario_id = 0; scenario_id < ctx->s_ctx.sensor_mode_num; ++scenario_id){
-		if (ctx->s_ctx.sensor_id == WHOOPASSC1MAIN_SENSOR_ID || ctx->s_ctx.sensor_id == WHOOPASSS1MAIN_SENSOR_ID) {
+		if (ctx->s_ctx.sensor_id == WHOOPASSC1MAIN_SENSOR_ID || ctx->s_ctx.sensor_id == WHOOPASSS1MAIN_SENSOR_ID
+			|| ctx->s_ctx.sensor_id == WHOOPASSC1MAIN2_SENSOR_ID || ctx->s_ctx.sensor_id == WHOOPASSS1MAIN2_SENSOR_ID) {
 			ctx->s_ctx.mode[scenario_id].csi_param.cphy_ctle = MAINC1_CTLE_LEVEL;
 			ctx->s_ctx.mode[scenario_id].csi_param.cdr_delay = MAINC1_CTLE_DELAY;
 			ctx->s_ctx.mode[scenario_id].csi_param.cphy_eq_bw = MAINC1_CTLE_EQBW;
 			LOG_INF("update_CTLE_C1, scenario_id: %d\n", scenario_id);
-		} else if (ctx->s_ctx.sensor_id == WHOOPASSC2MAIN_SENSOR_ID || ctx->s_ctx.sensor_id == WHOOPASSS2MAIN_SENSOR_ID) {
+		} else if (ctx->s_ctx.sensor_id == WHOOPASSC2MAIN_SENSOR_ID || ctx->s_ctx.sensor_id == WHOOPASSS2MAIN_SENSOR_ID
+			      || ctx->s_ctx.sensor_id == WHOOPASSC2MAIN2_SENSOR_ID || ctx->s_ctx.sensor_id == WHOOPASSS2MAIN2_SENSOR_ID) {
 			ctx->s_ctx.mode[scenario_id].csi_param.cphy_ctle = MAINC2_CTLE_LEVEL;
 			ctx->s_ctx.mode[scenario_id].csi_param.cdr_delay = MAINC2_CTLE_DELAY;
 			ctx->s_ctx.mode[scenario_id].csi_param.cphy_eq_bw = MAINC2_CTLE_EQBW;

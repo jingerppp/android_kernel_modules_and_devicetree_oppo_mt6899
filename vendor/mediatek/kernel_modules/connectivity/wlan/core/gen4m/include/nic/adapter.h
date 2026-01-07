@@ -3118,10 +3118,14 @@ struct ADAPTER {
 	struct WLAN_DFS_CHANNEL_REQ_ENTRY
 		aucDfsChnlReqEntries[DFS_CHANNEL_CTRL_SOURCE_NUM];
 	enum ENUM_DRV_OWN_SRC eDrvOwnSrc;
-	struct QUE rTimeoutedHrtimerInfoQue; /* already timeout */
+	struct LINK rTimeoutedHrtimerList; /* already timeout */
 	struct LINK rHrtimerList; /* still not timeout */
-	struct QUE rTimeoutedAlarmTimerInfoQue; /* already timeout */
+	struct LINK rTimeoutedAlarmTimerList; /* already timeout */
 	struct LINK rAlarmTimerList; /* still not timeout */
+#ifdef OPLUS_FEATURE_WIFI_POWER
+//add for BW limit according to special country which based on oplus channel ver
+	uint8_t ucChannelVer;
+#endif /* OPLUS_FEATURE_WIFI_POWER */
 };				/* end of _ADAPTER_T */
 /*******************************************************************************
  *                            P U B L I C   D A T A

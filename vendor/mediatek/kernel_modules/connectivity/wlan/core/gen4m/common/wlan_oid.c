@@ -8771,7 +8771,7 @@ wlanoidSetCurrentPacketFilter(struct ADAPTER *prAdapter,
 						 &rSetRxPacketFilter,
 						 TRUE, pvSetBuffer,
 						 u4SetBufferLen);
-		DBGLOG(OID, TRACE, "[MC debug] u4OsPacketFilter=0x%x\n",
+		DBGLOG(OID, INFO, "[MC debug] u4OsPacketFilter=0x%x\n",
 		       prAdapter->u4OsPacketFilter);
 		return rResult;
 	} else {
@@ -14730,6 +14730,8 @@ wlanoidQuerySetRadarDetectMode(struct ADAPTER *prAdapter,
 		DBGLOG(INIT, ERROR, "prCmdRddOnOffCtrl is NULL");
 		return WLAN_STATUS_FAILURE;
 	}
+
+	p2pFuncSetRadarDetectMode(prSetRadarDetectMode->ucRadarDetectMode);
 
 	prCmdRddOnOffCtrl->ucDfsCtrl = RDD_DET_MODE;
 

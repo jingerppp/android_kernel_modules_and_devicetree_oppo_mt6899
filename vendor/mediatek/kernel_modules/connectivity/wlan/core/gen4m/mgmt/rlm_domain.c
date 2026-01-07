@@ -1720,7 +1720,10 @@ struct DOMAIN_INFO_ENTRY *oplusGetActiveDomainInfo(struct ADAPTER *prAdapter)
     }
     if (prAdapter->prDomainInfo)
         return prAdapter->prDomainInfo;
-
+#ifdef OPLUS_FEATURE_WIFI_POWER
+//add for BW limit according to special country which based on oplus channel ver
+	prAdapter->ucChannelVer = arSupportedRegDomains->chver;
+#endif /* OPLUS_FEATURE_WIFI_POWER */
     prRegInfo = &prAdapter->prGlueInfo->rRegInfo;
 
     /*
@@ -13322,9 +13325,43 @@ static const uint16_t g_u2SpecifyCountryGroup[] = {
 	COUNTRY_CODE_TN, COUNTRY_CODE_ID, COUNTRY_CODE_BO
 };
 
+#ifdef OPLUS_FEATURE_WIFI_POWER
+//add for BW limit according to special country which based on oplus channel ver
+static const uint16_t g_u2OplusSpecifyCountryGroup_39[] = {
+	COUNTRY_CODE_MA, COUNTRY_CODE_EG, COUNTRY_CODE_NG,
+	COUNTRY_CODE_AU, COUNTRY_CODE_CA, COUNTRY_CODE_MX,
+	COUNTRY_CODE_AR, COUNTRY_CODE_RU,
+	COUNTRY_CODE_TN, COUNTRY_CODE_ID, COUNTRY_CODE_BO
+};
+
+struct OPLUS_CHANNEL_BW_SPECIAL_COUNTRY g_oplusCountryBwLimit[] = {
+	{39, (uint16_t *)g_u2OplusSpecifyCountryGroup_39, sizeof(g_u2OplusSpecifyCountryGroup_39) / sizeof(g_u2OplusSpecifyCountryGroup_39[0])},
+};
+
+#endif /* OPLUS_FEATURE_WIFI_POWER */
+
 bool rlmDomainGetSpecifyCountry(struct ADAPTER *prAdapter)
 {
 	uint16_t u2CountryCode = prAdapter->rWifiVar.u2CountryCode;
+#ifdef OPLUS_FEATURE_WIFI_POWER
+//add for BW limit according to special country which based on oplus channel ver
+	uint16_t k, j;
+	uint16_t *u2OplusBwLmtCountry;
+	for (k = 0; k < sizeof(g_oplusCountryBwLimit)/sizeof(g_oplusCountryBwLimit[0]); k++) {
+		if (prAdapter->ucChannelVer == g_oplusCountryBwLimit[k].ver) {
+			u2OplusBwLmtCountry = g_oplusCountryBwLimit[k].bwspecountry;
+			for (j = 0; j < g_oplusCountryBwLimit[k].tableSize; j++) {
+				if (u2OplusBwLmtCountry[j] == u2CountryCode) {
+					DBGLOG(RLM, TRACE,
+						"the current country 0x%04x special BW limit,the idx %d",
+						u2OplusBwLmtCountry[j], j);
+					return TRUE;
+				}
+			}
+			return FALSE;
+		}
+	}
+#endif /* OPLUS_FEATURE_WIFI_POWER */
 	uint16_t ucSpecifyCountryGroupSize =
 		ARRAY_SIZE(g_u2SpecifyCountryGroup);
 	uint16_t i = 0;

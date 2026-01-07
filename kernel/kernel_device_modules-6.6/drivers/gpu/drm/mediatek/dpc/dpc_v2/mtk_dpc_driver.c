@@ -1623,7 +1623,7 @@ static int dpc_vidle_power_keep(const enum mtk_vidle_voter_user _user)
 
 	mtk_disp_vlp_vote(VOTE_SET, user);
 
-	if (!g_priv->enabled || user < DISP_VIDLE_USER_CRTC)
+	if (!g_priv->enabled || user < DISP_VIDLE_USER_CRTC) /* skip power polling */
 		return ret;
 
 	switch (user) {
@@ -1705,6 +1705,7 @@ static void dpc_vidle_power_keep_by_gce(struct cmdq_pkt *pkt, const enum mtk_vid
 
 	switch (user) {
 	case DISP_VIDLE_USER_DISP_CMDQ:
+	case DISP_VIDLE_USER_TRIGLOOP_CMDQ:
 		cmdq_pkt_poll_sleep(pkt, BIT(20), g_priv->mtcmos_cfg[DPC_SUBSYS_DIS1].chk_pa, BIT(20));
 		cmdq_pkt_poll_sleep(pkt, BIT(20), g_priv->mtcmos_cfg[DPC_SUBSYS_DIS0].chk_pa, BIT(20));
 		cmdq_pkt_poll_sleep(pkt, BIT(20), g_priv->mtcmos_cfg[DPC_SUBSYS_OVL0].chk_pa, BIT(20));

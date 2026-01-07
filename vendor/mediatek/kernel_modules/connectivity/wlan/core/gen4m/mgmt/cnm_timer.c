@@ -245,12 +245,20 @@ void cnmTimerInitialize(struct ADAPTER *prAdapter)
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_LIST);
 	LINK_INITIALIZE(&prAdapter->rHrtimerList);
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_LIST);
+
+	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_TIMEOUT);
+	LINK_INITIALIZE(&prAdapter->rTimeoutedHrtimerList);
+	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_TIMEOUT);
 #endif
 
 #if CFG_SUPPORT_ALARMTIMER
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_LIST);
 	LINK_INITIALIZE(&prAdapter->rAlarmTimerList);
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_LIST);
+
+	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_TIMEOUT);
+	LINK_INITIALIZE(&prAdapter->rTimeoutedAlarmTimerList);
+	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_TIMEOUT);
 #endif
 
 }
@@ -292,18 +300,41 @@ void cnmTimerDestroy(struct ADAPTER *prAdapter)
 	/* Hrtimer */
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_LIST);
 	LINK_FOR_EACH_ENTRY_SAFE(curr, temp, &prAdapter->rHrtimerList,
-				 rLinkEntry, struct TIMER)
-		cnmTimerStopTimer(prAdapter, curr);
+				 rLinkEntry, struct TIMER) {
+		kalHrtimerCancel(&curr->rHrtimer);
+		LINK_TRY_REMOVE_ENTRY(&prAdapter->rHrtimerList,
+				      &curr->rLinkEntry);
+	}
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_LIST);
+
+	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_TIMEOUT);
+	LINK_FOR_EACH_ENTRY_SAFE(curr, temp, &prAdapter->rTimeoutedHrtimerList,
+				 rLinkEntry, struct TIMER) {
+		LINK_REMOVE_KNOWN_ENTRY(&prAdapter->rTimeoutedHrtimerList,
+					&curr->rLinkEntry);
+	}
+	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_TIMEOUT);
 #endif
 
 #if CFG_SUPPORT_ALARMTIMER
 	/* AlarmTimer */
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_LIST);
 	LINK_FOR_EACH_ENTRY_SAFE(curr, temp, &prAdapter->rAlarmTimerList,
-				 rLinkEntry, struct TIMER)
-		cnmTimerStopTimer(prAdapter, curr);
+				 rLinkEntry, struct TIMER) {
+		kalHrtimerCancel(&curr->rHrtimer);
+		LINK_REMOVE_KNOWN_ENTRY(&prAdapter->rAlarmTimerList,
+					&curr->rLinkEntry);
+	}
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_LIST);
+
+	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_TIMEOUT);
+	LINK_FOR_EACH_ENTRY_SAFE(curr, temp,
+				 &prAdapter->rTimeoutedAlarmTimerList,
+				 rLinkEntry, struct TIMER) {
+		LINK_REMOVE_KNOWN_ENTRY(&prAdapter->rTimeoutedAlarmTimerList,
+					&curr->rLinkEntry);
+	}
+	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_TIMEOUT);
 #endif
 
 	/* Note: glue layer will be responsible for timer destruction */
@@ -391,6 +422,10 @@ cnmTimerInitHrtimerImpl(struct ADAPTER *prAdapter,
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_LIST);
 	LINK_ENTRY_INITIALIZE(&prTimer->rLinkEntry);
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_LIST);
+
+	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_TIMEOUT);
+	LINK_ENTRY_INITIALIZE(&prTimer->rHrtimeoutLinkEntry);
+	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_TIMEOUT);
 }
 #endif
 
@@ -411,6 +446,10 @@ cnmTimerInitAlarmTimerImpl(struct ADAPTER *prAdapter,
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_LIST);
 	LINK_ENTRY_INITIALIZE(&prTimer->rLinkEntry);
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_LIST);
+
+	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_TIMEOUT);
+	LINK_ENTRY_INITIALIZE(&prTimer->rAlarmTimeoutLinkEntry);
+	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_TIMEOUT);
 }
 
 #endif
@@ -471,16 +510,14 @@ static void cnmTimerStopHrtimer_impl(struct ADAPTER *prAdapter,
 
 	kalHrtimerCancel(&prTimer->rHrtimer);
 
-	if (timerPendingTimer(prTimer)) {
-		KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_LIST);
-		LINK_REMOVE_KNOWN_ENTRY(&prAdapter->rHrtimerList,
-					&prTimer->rLinkEntry);
-		KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_LIST);
-	}
+	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_LIST);
+	LINK_TRY_REMOVE_ENTRY(&prAdapter->rHrtimerList,
+				&prTimer->rLinkEntry);
+	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_LIST);
 
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_TIMEOUT);
-	QUEUE_TRY_REMOVE_ENTRY(&prAdapter->rTimeoutedHrtimerInfoQue,
-			       &prTimer->rHrtimeoutQueEntry);
+	LINK_TRY_REMOVE_ENTRY(&prAdapter->rTimeoutedHrtimerList,
+			       &prTimer->rHrtimeoutLinkEntry);
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_HRTIMER_TIMEOUT);
 }
 #endif
@@ -492,16 +529,14 @@ static void cnmTimerStopAlarmTimer_impl(struct ADAPTER *prAdapter,
 
 	kalAlarmTimerCancel(&prTimer->rAlarmTimer);
 
-	if (timerPendingTimer(prTimer)) {
-		KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_LIST);
-		LINK_REMOVE_KNOWN_ENTRY(
-			&prAdapter->rAlarmTimerList, &prTimer->rLinkEntry);
-		KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_LIST);
-	}
+	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_LIST);
+	LINK_TRY_REMOVE_ENTRY(
+		&prAdapter->rAlarmTimerList, &prTimer->rLinkEntry);
+	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_LIST);
 
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_TIMEOUT);
-	QUEUE_TRY_REMOVE_ENTRY(&prAdapter->rTimeoutedAlarmTimerInfoQue,
-			       &prTimer->rAlarmTimeoutQueEntry);
+	LINK_TRY_REMOVE_ENTRY(&prAdapter->rTimeoutedAlarmTimerList,
+			       &prTimer->rAlarmTimeoutLinkEntry);
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_ALARMTIMER_TIMEOUT);
 }
 #endif

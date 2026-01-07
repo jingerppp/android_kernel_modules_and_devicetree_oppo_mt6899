@@ -869,7 +869,33 @@ struct PRIV_CMD_HANDLER priv_cmd_handlers_customer[] = {
 		.ucArgNum  = COMMON_CMD_SET_ARG_NUM(2),
 		.policy    = set_flag_policy,
 		.u4PolicySize = ARRAY_SIZE(set_flag_policy)
-	}
+    },
+#ifdef OPLUS_FEATURE_WIFI_SAP_ACCELERATE
+    {
+        .pcCmdStr  = CMD_OPLUS_ENABLE_SAP_ACCELERATE_FUNC,
+        .pfHandler = priv_driver_enable_oplus_sap_accelerate,
+        .argPolicy = VERIFY_EXACT_ARG_NUM,
+        .ucArgNum  = COMMON_CMD_GET_ARG_NUM(1),
+        .policy    = NULL,
+        .u4PolicySize = 0
+    },
+    {
+        .pcCmdStr  = CMD_OPLUS_DISABLE_SAP_ACCELERATE_FUNC,
+        .pfHandler = priv_driver_disable_oplus_sap_accelerate,
+        .argPolicy = VERIFY_EXACT_ARG_NUM,
+        .ucArgNum  = COMMON_CMD_GET_ARG_NUM(1),
+        .policy    = NULL,
+        .u4PolicySize = 0
+    },
+    {
+        .pcCmdStr  = CMD_OPLUS_GET_SAP_ACCELERATE_FUNC_STATUS,
+        .pfHandler = priv_driver_get_oplus_sap_accelerate_status,
+        .argPolicy = VERIFY_EXACT_ARG_NUM,
+        .ucArgNum  = COMMON_CMD_GET_ARG_NUM(1),
+        .policy    = NULL,
+        .u4PolicySize = 0
+    },
+#endif /* OPLUS_FEATURE_WIFI_SAP_ACCELERATE */
 };
 
 /* Debug only, unavailable in user load */

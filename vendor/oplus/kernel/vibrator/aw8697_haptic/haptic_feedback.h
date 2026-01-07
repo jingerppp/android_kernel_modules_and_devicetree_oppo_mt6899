@@ -146,6 +146,7 @@ struct haptic_mem_alloc_event_info {
 	uint32_t track_type;
 	uint32_t alloc_len;
 	char fun_name[MAX_FUN_NAME_LEN];
+	uint32_t uvlo_report_counts;
 };
 
 struct haptic_mem_alloc_track_event {
@@ -160,6 +161,7 @@ struct haptic_uvlo_mode_event_info {
 	uint32_t track_type;
 	uint32_t reg_value;
 	char fail_info[MAX_FAIL_INFO_LEN];
+	uint32_t uvlo_report_counts;
 };
 
 struct haptic_uvlo_mode_track_event {

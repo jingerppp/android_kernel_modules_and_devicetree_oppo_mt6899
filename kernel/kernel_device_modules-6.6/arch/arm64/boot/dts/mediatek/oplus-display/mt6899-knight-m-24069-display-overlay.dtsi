@@ -39,16 +39,16 @@
 		vci-supply = <&mt6368_vmc>;
 		pinctrl-names = "default";
 		port {
-			oplus_panel_in0: endpoint {
-				remote-endpoint = <&oplus_dsi_out0>;
+			oplus_panel_in5: endpoint {
+				remote-endpoint = <&oplus_dsi_out>;
 			};
 		};
 	};
 
 	ports {
 		port {
-			oplus_dsi_out0: endpoint@0 {
-				remote-endpoint = <&oplus_panel_in0>;
+			oplus_dsi_out: endpoint {
+				remote-endpoint = <&oplus_panel_in5>;
 			};
 		};
 	};

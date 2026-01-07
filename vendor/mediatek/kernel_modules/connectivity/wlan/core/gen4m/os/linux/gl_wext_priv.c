@@ -51,6 +51,10 @@
 #if (CFG_MTK_SUPPORT_LIGHT_MDDP == 1)
 #include "mddp.h"
 #endif /* CFG_MTK_SUPPORT_LIGHT_MDDP */
+
+#ifdef OPLUS_FEATURE_WIFI_SAP_ACCELERATE
+#include "oplus_sap_accelerate.h"
+#endif /* OPLUS_FEATURE_WIFI_SAP_ACCELERATE */
 /*
  * #if CFG_SUPPORT_QA_TOOL
  * extern UINT_16 g_u2DumpIndex;
@@ -11922,7 +11926,6 @@ int priv_driver_dfs_cac_start(struct net_device *prNetDev,
 		(struct MSG_P2P_DFS_CAC *) NULL;
 	struct P2P_ROLE_FSM_INFO *prP2pRoleFsmInfo =
 			(struct P2P_ROLE_FSM_INFO *) NULL;
-	struct WIFI_VAR *prWifiVar;
 
 	if (GLUE_CHK_PR2(prNetDev, pcCommand) == FALSE)
 		return -1;
@@ -11935,7 +11938,6 @@ int priv_driver_dfs_cac_start(struct net_device *prNetDev,
 		ucRoleIdx, &ucBssIdx) !=
 		WLAN_STATUS_SUCCESS)
 		return -1;
-	prWifiVar = &prGlueInfo->prAdapter->rWifiVar;
 
 	DBGLOG(REQ, LOUD, "command is %s\n", pcCommand);
 	wlanCfgParseArgument(pcCommand, &i4Argc, apcArgv);
@@ -11973,9 +11975,6 @@ int priv_driver_dfs_cac_start(struct net_device *prNetDev,
 		(p2pFuncGetDfsState() == DFS_STATE_DETECTED))
 		p2pFuncSetDfsState(DFS_STATE_INACTIVE);
 
-	p2pFuncSetRadarDetectMode(DFS_DETECT_MODE_1NSS);
-	p2pFuncResetRadarDetectCnt();
-
 	prP2pStartCacMsg = (struct MSG_P2P_DFS_CAC *)
 		cnmMemAlloc(prGlueInfo->prAdapter,
 			RAM_TYPE_MSG, sizeof(struct MSG_P2P_DFS_CAC));
@@ -11994,17 +11993,6 @@ int priv_driver_dfs_cac_start(struct net_device *prNetDev,
 		MBOX_ID_0,
 		(struct MSG_HDR *) prP2pStartCacMsg,
 		MSG_SEND_METHOD_BUF);
-	prWifiVar->u4ByPassCacTimeBackup =
-		prWifiVar->u4ByPassCacTime;
-	prWifiVar->u4ByPassCacTime = 0;
-
-	if (prWifiVar->u4ByPassCacTime) {
-		p2pFuncEnableManualCac();
-		p2pFuncSetDriverCacTime(prWifiVar->u4ByPassCacTime);
-	} else {
-		p2pFuncDisableManualCac();
-		p2pFuncSetDriverCacTime(prWifiVar->u4ByPassCacTime);
-	}
 
 	DBGLOG(P2P, INFO, "start cac with ch %d and bw %d\n",
 		ucCh, ucBw);
@@ -12022,7 +12010,6 @@ int priv_driver_dfs_cac_stop(struct net_device *prNetDev,
 	uint8_t ucRoleIdx = 0, ucBssIdx = 0;
 	struct MSG_P2P_DFS_CAC *prP2pStopCacMsg =
 		(struct MSG_P2P_DFS_CAC *) NULL;
-	struct WIFI_VAR *prWifiVar;
 
 	if (GLUE_CHK_PR2(prNetDev, pcCommand) == FALSE)
 		return -1;
@@ -12035,7 +12022,6 @@ int priv_driver_dfs_cac_stop(struct net_device *prNetDev,
 		ucRoleIdx, &ucBssIdx) !=
 		WLAN_STATUS_SUCCESS)
 		return -1;
-	prWifiVar = &prGlueInfo->prAdapter->rWifiVar;
 
 	DBGLOG(REQ, LOUD, "command is %s\n", pcCommand);
 	wlanCfgParseArgument(pcCommand, &i4Argc, apcArgv);
@@ -12054,18 +12040,6 @@ int priv_driver_dfs_cac_stop(struct net_device *prNetDev,
 		MBOX_ID_0,
 		(struct MSG_HDR *) prP2pStopCacMsg,
 		MSG_SEND_METHOD_BUF);
-
-	prWifiVar->u4ByPassCacTime =
-		prWifiVar->u4ByPassCacTimeBackup;
-
-	if (prWifiVar->u4ByPassCacTime) {
-		p2pFuncEnableManualCac();
-		p2pFuncSetDriverCacTime(prWifiVar->u4ByPassCacTime);
-	} else {
-		p2pFuncDisableManualCac();
-		p2pFuncSetDriverCacTime(prWifiVar->u4ByPassCacTime);
-	}
-	p2pFuncSetRadarDetectMode(0);
 
 	return	i4BytesWritten;
 }
@@ -12194,8 +12168,6 @@ int priv_driver_radarmode(struct net_device *prNetDev,
 
 	if (ucRadarDetectMode >= 1)
 		ucRadarDetectMode = 1;
-
-	p2pFuncSetRadarDetectMode(ucRadarDetectMode);
 
 	_SetRadarDetectMode(prNetDev, ucRadarDetectMode);
 
@@ -23856,3 +23828,34 @@ int priv_driver_dump_wfsys_cpupcr(struct net_device *prNetDev,
 
 	return i4BytesWritten;
 }
+#ifdef OPLUS_FEATURE_WIFI_SAP_ACCELERATE
+int priv_driver_enable_oplus_sap_accelerate(struct net_device *prNetDev,
+    char *pcCommand, int i4TotalLen)
+{
+    DBGLOG(REQ, INFO, "[oplusSapAccelerate]enable oplus sap accelerate module\n");
+    int32_t i4BytesWritten = 0;
+    oplusEnableSapAccelerateModule();
+    i4BytesWritten = kalSnprintf(pcCommand, i4TotalLen, "sap acce func enable successful\n");
+    return i4BytesWritten;
+}
+
+int priv_driver_disable_oplus_sap_accelerate(struct net_device *prNetDev,
+    char *pcCommand, int i4TotalLen)
+{
+    DBGLOG(REQ, INFO, "[oplusSapAccelerate]disable oplus sap accelerate module\n");
+    int32_t i4BytesWritten = 0;
+    oplusDisableSapAccelerateModule();
+    i4BytesWritten = kalSnprintf(pcCommand, i4TotalLen, "sap acce func disable successful\n");
+    return i4BytesWritten;
+}
+
+int priv_driver_get_oplus_sap_accelerate_status(struct net_device *prNetDev,
+    char *pcCommand, int i4TotalLen)
+{
+    DBGLOG(REQ, INFO, "[oplusSapAccelerate]get oplus sap accelerate module status\n");
+    int32_t i4BytesWritten = 0;
+    bool status = oplusGetSapAcceFuncStatus();
+    i4BytesWritten = kalSnprintf(pcCommand, i4TotalLen, "current sap acce func status is %d\n", status);
+    return i4BytesWritten;
+}
+#endif /* OPLUS_FEATURE_WIFI_SAP_ACCELERATE */

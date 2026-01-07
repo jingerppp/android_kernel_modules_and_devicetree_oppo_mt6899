@@ -11587,6 +11587,9 @@ void mtk_crtc_start_trig_loop(struct drm_crtc *crtc)
 
 		GCE_DO(clear_event, EVENT_CMD_EOF);
 
+		/* keep power before access registers and after events waiting */
+		mtk_vidle_user_power_keep_by_gce(DISP_VIDLE_USER_TRIGLOOP_CMDQ, cmdq_handle, 0);
+
 		mtk_crtc_comp_trigger(mtk_crtc, cmdq_handle, MTK_TRIG_FLAG_PRE_TRIGGER);
 
 		if (disp_helper_get_stage() == DISP_HELPER_STAGE_BRING_UP)
@@ -11765,6 +11768,9 @@ skip_prete:
 		}
 
 		mtk_set_trig_stage(crtc, cmdq_handle, SET_CABC_START);
+
+		mtk_vidle_user_power_release_by_gce(DISP_VIDLE_USER_TRIGLOOP_CMDQ, cmdq_handle);
+
 		GCE_DO(set_event, EVENT_CABC_EOF);
 		mtk_set_trig_stage(crtc, cmdq_handle, SET_CABC_END);
 		GCE_DO(set_event, EVENT_STREAM_EOF);

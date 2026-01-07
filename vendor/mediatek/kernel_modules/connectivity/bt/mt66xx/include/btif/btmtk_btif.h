@@ -63,7 +63,7 @@
 
 #define IRQ_NAME_SIZE			(20)
 #define MAX_STATE_MONITORS		(2)
-#define RING_BUFFER_SIZE		(16384)
+#define RING_BUFFER_SIZE		(32768)
 
 #define MAX_DUMP_DATA_SIZE		(20)
 #define MAX_DUMP_QUEUE_SIZE		(100)
